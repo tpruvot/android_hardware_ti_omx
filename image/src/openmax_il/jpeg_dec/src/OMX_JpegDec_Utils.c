@@ -361,6 +361,7 @@ OMX_ERRORTYPE Start_ComponentThreadJpegDec(OMX_HANDLETYPE pComponent)
     }
 
     OMX_PRINT2(pComponentPrivate->dbg, "JPEG Start_ComponentThread\n");
+    pComponentPrivate->bExitCompThrd = 0;
     /* Create the Component Thread */
 #ifdef UNDER_CE
     eError = pthread_create (&(pComponentPrivate->pComponentThread), &attr, OMX_JpegDec_Thread, pComponent);
@@ -446,6 +447,7 @@ OMX_ERRORTYPE Free_ComponentResourcesJpegDec(JPEGDEC_COMPONENT_PRIVATE *pCompone
 
     OMX_PRINT2(pComponentPrivate->dbg, "Freeing resources\n");
 
+    pComponentPrivate->bExitCompThrd = 1;
     nRet = write(pComponentPrivate->nCmdPipe[1], &eCmd, sizeof(eCmd));
     if (nRet == -1) {
         OMX_PRCOMM4(pComponentPrivate->dbg, "Error while writing into nCmdPipe\n");

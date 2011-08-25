@@ -469,6 +469,8 @@ typedef struct JPEGENC_COMPONENT_PRIVATE
 #ifdef __PERF_INSTRUMENTATION__
     PERF_OBJHANDLE pPERF, pPERFcomp;
 #endif
+    OMX_BOOL errorSent;
+    OMX_U16 bExitCompThrd;
     struct OMX_TI_Debug dbg;
 
     /* Reference count for pending state change requests */
