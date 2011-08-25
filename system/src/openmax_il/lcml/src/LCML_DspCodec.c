@@ -56,6 +56,7 @@
 
 /* Common WinCE and Linux Headers */
 #include "LCML_DspCodec.h"
+#include "OMX_TI_Common.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -68,17 +69,25 @@
 #undef LOG_TAG
 #define LOG_TAG "TI_LCML"
 
+
+/* not all the allocations done at lcml level should be 128 byte aligned so
+ * these are in use as well */
+
+#define LCML_MALLOC_SIZE_DSPALIGN(_ptr_, _size_, _name_) \
+    _ptr_ = (_name_*)newmalloc(_size_ + EXTRA_BYTES); \
+    memset(_ptr_,0,_size_);
+
 #define LCML_MALLOC(p,s,t) \
-    p = (t*)malloc(s);                  \
+    LCML_MALLOC_SIZE_DSPALIGN(p,s,t); \
     if (NULL == p){             \
         OMXDBG_PRINT(stderr, ERROR, 4, OMX_DBG_BASEMASK, "LCML:::::::: ERROR(#%d F:%s)!!! Ran out of memory while trying to allocate %d bytes!!!\n",__LINE__,__FUNCTION__,s);    \
     }else { \
         OMXDBG_PRINT(stderr, PRINT, 2, OMX_DBG_BASEMASK, "LCML:::::::: (#%d F:%s)Success to allocate %d bytes ... pointer %p\n",__LINE__,__FUNCTION__,s,p); \
     }
 
-#define LCML_FREE(p)    \
+#define LCML_FREE(p) \
         OMXDBG_PRINT(stderr, PRINT, 2, OMX_DBG_BASEMASK, "LCML:::::::: (#%d F:%s)Freeing pointer %p done",__LINE__,__FUNCTION__,p); \
-        free(p);    
+        OMX_MEMFREE_STRUCT(p);
 
 /*Prototyping*/
 static OMX_ERRORTYPE InitMMCodec(OMX_HANDLETYPE hInt,
@@ -133,29 +142,30 @@ static int append_dsp_path(char * dll64p_name, char *absDLLname);
 ** =========================================================================*/
 OMX_ERRORTYPE GetHandle(OMX_HANDLETYPE *hInterface )
 {
+    OMX_ERRORTYPE eError = OMX_ErrorNone;
     OMX_ERRORTYPE err = 0 ;
-    LCML_DSP_INTERFACE* pHandle;
+    struct LCML_DSP_INTERFACE *pHandle;
     struct LCML_CODEC_INTERFACE *dspcodecinterface ;
 
     OMXDBG_PRINT(stderr, PRINT, 2, OMX_DBG_BASEMASK, "%d :: GetHandle application\n",__LINE__);
-    LCML_MALLOC(*hInterface,sizeof(LCML_DSP_INTERFACE),LCML_DSP_INTERFACE);
+    LCML_MALLOC(*hInterface,sizeof(struct LCML_DSP_INTERFACE),struct LCML_DSP_INTERFACE);
 
     if (hInterface == NULL)
     {
         err = OMX_ErrorInsufficientResources;
         goto EXIT;
     }
-    memset(*hInterface, 0, sizeof(LCML_DSP_INTERFACE));
+    memset(*hInterface, 0, sizeof(struct LCML_DSP_INTERFACE));
 
     pHandle = (LCML_DSP_INTERFACE*)*hInterface;
 
-    LCML_MALLOC(dspcodecinterface,sizeof(LCML_CODEC_INTERFACE),LCML_CODEC_INTERFACE);
+    LCML_MALLOC(dspcodecinterface,sizeof(struct LCML_CODEC_INTERFACE),struct LCML_CODEC_INTERFACE);
     if (dspcodecinterface == NULL)
     {
         err = OMX_ErrorInsufficientResources;
         goto EXIT;
     }
-    memset(dspcodecinterface, 0, sizeof(LCML_CODEC_INTERFACE));
+    memset(dspcodecinterface, 0, sizeof(struct LCML_CODEC_INTERFACE));
     OMX_DBG_INIT (dspcodecinterface->dbg, "TI_LCML");
 
     pHandle->pCodecinterfacehandle = dspcodecinterface;
@@ -165,13 +175,13 @@ OMX_ERRORTYPE GetHandle(OMX_HANDLETYPE *hInterface )
     dspcodecinterface->QueueBuffer = QueueBuffer;
     dspcodecinterface->ControlCodec = ControlCodec;
 
-    LCML_MALLOC(pHandle->dspCodec,sizeof(LCML_DSP),LCML_DSP);
+    LCML_MALLOC(pHandle->dspCodec,sizeof(struct LCML_DSP),struct LCML_DSP);
     if(pHandle->dspCodec == NULL)
     {
         err = OMX_ErrorInsufficientResources;
         goto EXIT;
     }
-    memset(pHandle->dspCodec, 0, sizeof(LCML_DSP));
+    memset(pHandle->dspCodec, 0, sizeof(struct LCML_DSP));
 
     pthread_mutex_init (&pHandle->mutex, NULL);
     dspcodecinterface->pCodec = *hInterface;
@@ -257,8 +267,8 @@ static OMX_ERRORTYPE InitMMCodecEx(OMX_HANDLETYPE hInt,
 #endif
         /* 720p implementation */
         {
-            pthread_mutex_init(&phandle->m_isStopped_mutex, NULL);
-            phandle->mapped_buffer_count = 0;
+            //pthread_mutex_init(&phandle->m_isStopped_mutex, NULL);
+            //phandle->mapped_buffer_count = 0;
         }
         /* INIT DSP RESOURCE */
         if(pCallbacks)
@@ -413,7 +423,7 @@ static OMX_ERRORTYPE InitMMCodecEx(OMX_HANDLETYPE hInt,
             struct DSP_NOTIFICATION* notification;
             OMX_PRDSP2 (((LCML_CODEC_INTERFACE *)hInt)->dbg, "%d :: Registering the Node for Messaging\n",__LINE__);
 
-	        LCML_MALLOC(notification,sizeof(struct DSP_NOTIFICATION),struct DSP_NOTIFICATION)
+	    LCML_MALLOC(notification,sizeof(struct DSP_NOTIFICATION),struct DSP_NOTIFICATION)
             if(notification == NULL)
             {
                 OMX_ERROR4 (((LCML_CODEC_INTERFACE *)hInt)->dbg, "%d :: malloc failed....\n",__LINE__);
@@ -504,6 +514,7 @@ ERROR:
     LCML_FREE(argv);
 #endif
     OMX_PRINT1 (((LCML_CODEC_INTERFACE *)hInt)->dbg, "%d :: Exiting Init_DSPSubSystem\n error = %x\n", __LINE__, eError);
+    LOGV("%d :: Exiting Init_DSPSubSystem\n error = %x\n", __LINE__, eError);
     return eError;
 }
 
@@ -569,8 +580,8 @@ static OMX_ERRORTYPE InitMMCodec(OMX_HANDLETYPE hInt,
 
     /* 720p implementation */
     {
-        pthread_mutex_init(&phandle->m_isStopped_mutex, NULL);
-        phandle->mapped_buffer_count = 0;
+        //pthread_mutex_init(&phandle->m_isStopped_mutex, NULL);
+        //phandle->mapped_buffer_count = 0;
     }
 
     /* INIT DSP RESOURCE */
@@ -596,9 +607,16 @@ static OMX_ERRORTYPE InitMMCodec(OMX_HANDLETYPE hInt,
     OMX_PRDSP2 (((LCML_CODEC_INTERFACE *)hInt)->dbg, "DSPProcessor_Attach Successful\n");
     OMX_PRDSP1 (((LCML_CODEC_INTERFACE *)hInt)->dbg, "Base Image is Already Loaded\n");
 
+    phandle->vid_play_no_invalidate_flag = OMX_FALSE;
+
     for(dllinfo=0; dllinfo < phandle->dspCodec->NodeInfo.nNumOfDLLs; dllinfo++)
     {
         OMX_PRINT1 (((LCML_CODEC_INTERFACE *)hInt)->dbg, "%d :: Register Component Node\n",phandle->dspCodec->NodeInfo.AllUUIDs[dllinfo].eDllType);
+
+        if(0 == strcmp("720p_h264vdec_sn.dll64P", (char*)phandle->dspCodec->NodeInfo.AllUUIDs[dllinfo].DllName))
+            phandle->vid_play_no_invalidate_flag = OMX_TRUE;
+        else if(0 == strcmp("720p_mp4vdec_sn.dll64P", (char*)phandle->dspCodec->NodeInfo.AllUUIDs[dllinfo].DllName))
+            phandle->vid_play_no_invalidate_flag = OMX_TRUE;
 
         k = append_dsp_path((char*)phandle->dspCodec->NodeInfo.AllUUIDs[dllinfo].DllName, abs_dsp_path);
         if (k < 0)
@@ -813,6 +831,7 @@ ERROR:
     LCML_FREE(argv);
 #endif
     OMX_PRINT1 (((LCML_CODEC_INTERFACE *)hInt)->dbg, "%d :: Exiting Init_DSPSubSystem\n", __LINE__);
+    LOGV("%d :: Exiting Init_DSPSubSystem %d\n", __LINE__, eError);
     return eError;
 }
 
@@ -1009,7 +1028,7 @@ static OMX_ERRORTYPE QueueBuffer (OMX_HANDLETYPE hComponent,
                     if(bufType == EMMCodecInputBuffer)
                     {
                         /* Issue a memory flush for input buffer to ensure cache coherency */
-                        status = DSPProcessor_FlushMemory(phandle->dspCodec->hProc, pDmmBuf->pAllocated, bufferSizeUsed, (bufferSizeUsed > 512*1024) ? 3: 0);
+                        status = DSPProcessor_FlushMemory(phandle->dspCodec->hProc, pDmmBuf->pAllocated, bufferSizeUsed, (bufferSizeUsed > 512*1024) ? 3: 2);
                         if(DSP_FAILED(status))
                         {
                             goto MUTEX_UNLOCK;
@@ -1018,6 +1037,13 @@ static OMX_ERRORTYPE QueueBuffer (OMX_HANDLETYPE hComponent,
 
                     else if(bufType == EMMCodecOuputBuffer)
                     {
+/*
+Video playback UseCase --> Since output YUV is used by display using DMA, invalidate may not be required
+Video recorder UseCase --> Invalidate will be required
+Audio playback UseCase --> Invalidate will be required
+Audio recorder UseCase --> Invalidate will be required
+*/
+#if 0
                         /* Issue an memory invalidate for output buffer */
                         if (bufferLen > 512*1024)
                         {
@@ -1029,12 +1055,18 @@ static OMX_ERRORTYPE QueueBuffer (OMX_HANDLETYPE hComponent,
                         }
                         else
                         {
-                            status = DSPProcessor_InvalidateMemory(phandle->dspCodec->hProc, pDmmBuf->pAllocated, bufferLen);
-                            if(DSP_FAILED(status))
+#endif
+                            if(OMX_FALSE == phandle->vid_play_no_invalidate_flag)
                             {
-                                goto MUTEX_UNLOCK;
+                                status = DSPProcessor_InvalidateMemory(phandle->dspCodec->hProc, pDmmBuf->pAllocated, bufferLen);
+                                if(DSP_FAILED(status))
+                                {
+                                    goto MUTEX_UNLOCK;
+                                }
                             }
+#if 0
                         }
+#endif
                     }
 
                     break;
@@ -1238,9 +1270,9 @@ static OMX_ERRORTYPE ControlCodec(OMX_HANDLETYPE hComponent,
             /*DeleteDspResource (phandle);*/
             if (phandle->ReUseMap)
             {
-                pthread_mutex_lock(&phandle->m_isStopped_mutex);
+                //pthread_mutex_lock(&phandle->m_isStopped_mutex);
                 /*If you are able to obtain the lock then the Messaging thread has exited*/
-                pthread_mutex_unlock(&phandle->m_isStopped_mutex);
+                //pthread_mutex_unlock(&phandle->m_isStopped_mutex);
             }
 
             if (phandle->ReUseMap)
@@ -1317,7 +1349,7 @@ static OMX_ERRORTYPE ControlCodec(OMX_HANDLETYPE hComponent,
                         goto EXIT;
                     }
 
-                    LCML_MALLOC(phandle->pAlgcntlDmmBuf[i],sizeof(DMM_BUFFER_OBJ),DMM_BUFFER_OBJ);
+                    LCML_MALLOC(phandle->pAlgcntlDmmBuf[i],sizeof(struct DMM_BUFFER_OBJ),struct DMM_BUFFER_OBJ);
                     if(phandle->pAlgcntlDmmBuf[i] == NULL)
                     {
                         eError = OMX_ErrorInsufficientResources;
@@ -1572,7 +1604,7 @@ EXIT:
 OMX_ERRORTYPE FreeResources (LCML_DSP_INTERFACE *hInterface)
 {
     OMX_ERRORTYPE eError = OMX_ErrorNone;
-    LCML_DSP_INTERFACE *codec;
+    struct LCML_DSP_INTERFACE *codec;
 
     OMX_PRINT1 ((struct OMX_TI_Debug)(((LCML_CODEC_INTERFACE *)hInterface->pCodecinterfacehandle)->dbg), "%d :: LCML:: FreeResources\n",__LINE__);
     if(hInterface->dspCodec != NULL)
@@ -1580,7 +1612,7 @@ OMX_ERRORTYPE FreeResources (LCML_DSP_INTERFACE *hInterface)
         LCML_FREE(hInterface->dspCodec);
         hInterface->dspCodec = NULL;
     }
-    codec = (LCML_DSP_INTERFACE *)(((LCML_CODEC_INTERFACE*)hInterface->pCodecinterfacehandle)->pCodec);
+    codec = (struct LCML_DSP_INTERFACE *)(((LCML_CODEC_INTERFACE*)hInterface->pCodecinterfacehandle)->pCodec);
     if(codec != NULL)
     {
         pthread_mutex_destroy(&codec->m_isStopped_mutex);
@@ -1604,7 +1636,8 @@ OMX_ERRORTYPE FreeResources (LCML_DSP_INTERFACE *hInterface)
             }
  #endif
             OMX_DBG_CLOSE((struct OMX_TI_Debug )(((LCML_CODEC_INTERFACE*)hInterface->pCodecinterfacehandle)->dbg));
-            LCML_FREE(((LCML_CODEC_INTERFACE*)hInterface->pCodecinterfacehandle));
+            //LCML_FREE(((struct LCML_CODEC_INTERFACE*)hInterface->pCodecinterfacehandle));
+            LCML_FREE(hInterface->pCodecinterfacehandle);
             hInterface->pCodecinterfacehandle = NULL;
         }
         pthread_mutex_unlock(&codec->mutex);
@@ -1630,7 +1663,7 @@ OMX_ERRORTYPE DeleteDspResource(LCML_DSP_INTERFACE *hInterface)
     DSP_STATUS nExit;
     struct DSP_NODEATTR nodeAttr;
     OMX_U32 dllinfo;
-    LCML_DSP_INTERFACE *codec;
+    struct LCML_DSP_INTERFACE *codec;
 
     /* Get current state of node, if it is running, then only terminate it */
 
@@ -1719,7 +1752,7 @@ void* MessagingThread(void* arg)
 #endif
     if (((LCML_DSP_INTERFACE *)arg)->ReUseMap)
     {
-        pthread_mutex_lock(&((LCML_DSP_INTERFACE *)arg)->m_isStopped_mutex);
+        //pthread_mutex_lock(&((LCML_DSP_INTERFACE *)arg)->m_isStopped_mutex);
     }
 
     /* get message from DSP */
@@ -1855,11 +1888,16 @@ void* MessagingThread(void* arg)
 
                             status = DSPProcessor_InvalidateMemory(hDSPInterface->dspCodec->hProc, tmpDspStructAddress, sizeof(TArmDspCommunicationStruct));
                             if(DSP_FAILED(status))
-                                LOGE("Invalidate for communication structure failed. status = 0x%x\n", status);
+                                OMX_PRINT4 (((LCML_CODEC_INTERFACE *)((LCML_DSP_INTERFACE *)arg)->pCodecinterfacehandle)->dbg,
+                                     "Invalidate for communication structure failed. status = 0x%lx\n", status);
 
-                            status = DSPProcessor_InvalidateMemory(hDSPInterface->dspCodec->hProc, tmpDspStructAddress->iArmParamArg, tmpDspStructAddress->iParamSize);
-                            if(DSP_FAILED(status))
-                                LOGE("Invalidate for arm parameter arguments failed. status = 0x%x\n", status);
+                            if(0 != tmpDspStructAddress->iArmParamArg)
+                            {
+                                status = DSPProcessor_InvalidateMemory(hDSPInterface->dspCodec->hProc, tmpDspStructAddress->iArmParamArg, tmpDspStructAddress->iParamSize);
+                                if(DSP_FAILED(status))
+                                    OMX_PRINT4 (((LCML_CODEC_INTERFACE *)((LCML_DSP_INTERFACE *)arg)->pCodecinterfacehandle)->dbg,
+                                     "Invalidate for arm parameter arguments failed. status = 0x%lx\n", status);
+                            }
 
                             event = EMMCodecBufferProcessed;
                             args[0] = (void *) bufType;
@@ -2645,10 +2683,10 @@ void* MessagingThread(void* arg)
 
     } /* end of external while(1) loop */
 
-	/* 720p implementation */
+    /* 720p implementation */
     if (((LCML_DSP_INTERFACE *)arg)->ReUseMap)
     {
-        pthread_mutex_unlock(&((LCML_DSP_INTERFACE *)arg)->m_isStopped_mutex);
+        //pthread_mutex_unlock(&((LCML_DSP_INTERFACE *)arg)->m_isStopped_mutex);
     }
     OMX_PRINT1 (((LCML_CODEC_INTERFACE *)((LCML_DSP_INTERFACE *)arg)->pCodecinterfacehandle)->dbg, "Exiting LOOP of LCML \n");
 #ifdef __PERF_INSTRUMENTATION__

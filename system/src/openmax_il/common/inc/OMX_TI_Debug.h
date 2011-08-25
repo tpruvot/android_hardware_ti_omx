@@ -97,13 +97,13 @@
  */
 #define __OMX_DEBUG__
 #undef  __OMX_DBG_COLOR__
-#undef  __OMX_DBG_FILE__
+#define __OMX_DBG_FILE__
 #define __OMX_DBG_FN__
 #define __OMX_DBG_LINE__
 #undef  __OMX_DBG_DOMAIN__
 #undef  __OMX_DBG_LEVEL__
 #undef  __OMX_DBG_4ISERROR__
-#undef  __OMX_DBG_ANDROID__
+#define __OMX_DBG_ANDROID__
 
 /*
  *  OMX Debug levels specify the importance of the debug print
@@ -120,7 +120,12 @@
  */
 
 /* this is used as a bitmask currently, so must be 2^n-1 */
-#define OMX_DBG_MAX_LEVEL 0x0F
+#define OMX_DBG_MAX_LEVEL 0x0f
+
+#ifdef DEBUG_LOG
+#undef OMX_DBG_MAX_LEVEL
+#define OMX_DBG_MAX_LEVEL 0x01
+#endif
 
 /*
  *  OMX Debug domains specify the system that the messages relate to
