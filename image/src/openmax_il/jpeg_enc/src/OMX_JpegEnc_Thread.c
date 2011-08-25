@@ -113,11 +113,11 @@ void* OMX_JpegEnc_Thread (void* pThreadData)
     /**Looking for highest number of file descriptor for pipes
        inorder to put in select loop */
     fdmax = pComponentPrivate->nCmdPipe[0];
-    
+
     if ( pComponentPrivate->free_outBuf_Q[0] > fdmax ) {
         fdmax = pComponentPrivate->free_outBuf_Q[0];
     }
-    
+
 
     if ( pComponentPrivate->filled_inpBuf_Q[0] > fdmax ) {
         fdmax = pComponentPrivate->filled_inpBuf_Q[0];
@@ -136,21 +136,23 @@ void* OMX_JpegEnc_Thread (void* pThreadData)
 
         tv.tv_sec = 1;
         tv.tv_usec = 0;
-		
-	 sigemptyset(&set)	;
-	 sigaddset(&set,SIGALRM);
+
+        sigemptyset(&set);
+        sigaddset(&set,SIGALRM);
         status = pselect (fdmax+1, &rfds, NULL, NULL, NULL,&set);
+
+        if (pComponentPrivate->bExitCompThrd == 1) {
+            OMX_ERROR4(pComponentPrivate->dbg, "%d :: Comp Thrd Exiting here...\n",__LINE__);
+            break;
+        }
 
         if ( 0 == status ) {
             OMX_TRACE2(pComponentPrivate->dbg, "Component Thread Time Out!!!\n");
         } else if ( -1 == status ) {
             OMX_TRACE4(pComponentPrivate->dbg, "Error in Select\n");
 
-            pComponentPrivate->cbInfo.EventHandler (pComponentPrivate->pHandle, pComponentPrivate->pHandle->pApplicationPrivate,
-                                                    OMX_EventError, OMX_ErrorInsufficientResources, OMX_TI_ErrorSevere,
-                                                    "Error from COmponent Thread in select");
-	     eError = OMX_ErrorInsufficientResources;
-            break;
+            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->nCurState);
+            eError = OMX_ErrorInsufficientResources;
         } else {
             if ( (FD_ISSET (pComponentPrivate->filled_inpBuf_Q[0], &rfds))
                  && (pComponentPrivate->nCurState != OMX_StatePause) ) {
@@ -178,13 +180,13 @@ void* OMX_JpegEnc_Thread (void* pThreadData)
             }
             if ( FD_ISSET (pComponentPrivate->nCmdPipe[0], &rfds) ) {
                 /* Do not accept any command when the component is stopping */
-		OMX_PRCOMM2(pComponentPrivate->dbg, "CMD pipe is set in Component Thread\n");
-                
+                OMX_PRCOMM2(pComponentPrivate->dbg, "CMD pipe is set in Component Thread\n");
+
                 read (pComponentPrivate->nCmdPipe[0], &eCmd, sizeof (eCmd));
                 read (pComponentPrivate->nCmdDataPipe[0], &nParam1, sizeof (nParam1));
 
 #ifdef __PERF_INSTRUMENTATION__
-                                PERF_ReceivedCommand(pComponentPrivate->pPERFcomp,
+                PERF_ReceivedCommand(pComponentPrivate->pPERFcomp,
                                                      eCmd, nParam1,
                                                      PERF_ModuleLLMM);
 #endif
@@ -203,42 +205,39 @@ void* OMX_JpegEnc_Thread (void* pThreadData)
                                                                     OMX_EventError, OMX_ErrorHardware, OMX_TI_ErrorSevere,
                                                                     "Error returned by HandleJpegEncCommand\n");
                         }
-                        
                     }
                     else{
                         break;
                     }
-                } 
+                }
                 else if ( eCmd == OMX_CommandPortDisable ) {
                     OMX_PRBUFFER2(pComponentPrivate->dbg, "Before Disable Port function Port %d\n",(int)nParam1);
                     eError = JpegEncDisablePort(pComponentPrivate, nParam1);
                     OMX_PRBUFFER2(pComponentPrivate->dbg, "After JPEG Encoder Sisable Port error = %d\n", eError);
                     if (eError != OMX_ErrorNone ) {
                         break;
-                        }
-                    } 
+                    }
+                }
                 else if ( eCmd == OMX_CommandPortEnable ) {   /*TODO: Check errors*/
                     eError = JpegEncEnablePort(pComponentPrivate, nParam1);
                     if (eError != OMX_ErrorNone ) {
                         break;
-                        }
-                    } 
-                    
+                    }
+                }
                 else if ( eCmd == OMX_CustomCommandStopThread ) {
                     /*eError = 10;*/
                     goto EXIT;
-                    }
+                }
                 else if ( eCmd == OMX_CommandFlush ) {
-                      OMX_PRBUFFER2(pComponentPrivate->dbg, "eCmd =  OMX_CommandFlush\n");
-                      eError = HandleJpegEncCommandFlush (pComponentPrivate, nParam1);
-                      if (eError != OMX_ErrorNone) {
-                          break;
-                          }
+                    OMX_PRBUFFER2(pComponentPrivate->dbg, "eCmd =  OMX_CommandFlush\n");
+                    eError = HandleJpegEncCommandFlush (pComponentPrivate, nParam1);
+                    if (eError != OMX_ErrorNone) {
+                        break;
                     }
-                    if (pComponentPrivate->nCurState == OMX_StatePause)
+                }
+                if (pComponentPrivate->nCurState == OMX_StatePause)
                         continue;
             }
-
 
         }
     }
