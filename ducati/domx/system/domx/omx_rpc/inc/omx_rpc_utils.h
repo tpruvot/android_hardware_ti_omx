@@ -163,7 +163,4 @@ PTR = (TYPE *) (MSGBODY+OFFSET);
 	RPC_OMX_ERRORTYPE RPC_Util_ReleaseJobId(RPC_OMX_CONTEXT * hRPCCtx,
 	    OMX_U16 nJobId);
 
-#ifdef __cplusplus
-}
-#endif              /* __cplusplus */
 #endif

@@ -1,4 +1,3 @@
-ifeq ($(BUILD_G711_ENCODER),1)
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -15,7 +14,7 @@ LOCAL_C_INCLUDES := $(TI_OMX_COMP_C_INCLUDES) \
 	$(TI_OMX_AUDIO)/g711_enc/inc
 	
 LOCAL_SHARED_LIBRARIES := $(TI_OMX_COMP_SHARED_LIBRARIES) \
-        liblog
+        libbridge
 
 
 LOCAL_LDLIBS += \
@@ -28,4 +27,3 @@ LOCAL_CFLAGS := $(TI_OMX_CFLAGS) -DOMAP_2430
 LOCAL_MODULE:= libOMX.TI.G711.encode
 
 include $(BUILD_SHARED_LIBRARY)
-endif

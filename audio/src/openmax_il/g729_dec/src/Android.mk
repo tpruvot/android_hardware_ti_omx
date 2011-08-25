@@ -1,4 +1,3 @@
-ifeq ($(BUILD_G729_DECODER),1)
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -28,4 +27,3 @@ LOCAL_CFLAGS := $(TI_OMX_CFLAGS) -DOMAP_2430
 LOCAL_MODULE:= libOMX.TI.G729.decode
 
 include $(BUILD_SHARED_LIBRARY)
-endif

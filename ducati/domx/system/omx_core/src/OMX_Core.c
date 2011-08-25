@@ -35,6 +35,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <hardware_legacy/power.h>
 
 
 /* #include "OMX_RegLib.h" */
@@ -80,7 +81,6 @@ char *tComponentName[MAXCOMP][MAX_ROLES] = {
         "video_decoder.h263",
         "video_decoder.wmv",
         "video_decoder.vp6",
-        "video_decoder.mpeg2",
         "video_decoder.vp7",
         "video_decoder.rv",NULL},
     {"OMX.TI.DUCATI1.VIDEO.H264D",  "video_decoder.avc", NULL},
@@ -91,14 +91,15 @@ char *tComponentName[MAXCOMP][MAX_ROLES] = {
     {"OMX.TI.DUCATI1.VIDEO.VP6D",   "video_decoder.vp6", NULL},
     {"OMX.TI.DUCATI1.VIDEO.VP7D",   "video_decoder.vp7", NULL},
     {"OMX.TI.DUCATI1.IMAGE.JPEGD",  "jpeg_decoder.jpeg", NULL},
+    {"OMX.ITTIAM.AAC.encode", "audio_encoder.aac", NULL},
     {"OMX.ITTIAM.WMA.decode",  "audio_decoder.wma", NULL},
     {"OMX.ITTIAM.WMALSL.decode", "audio_decoder.wmalsl", NULL},
     {"OMX.ITTIAM.WMAPRO.decode", "audio_decoder.wmapro", NULL},
-    {"OMX.ITTIAM.AAC.encode", "audio_encoder.aac", NULL},
     /* terminate the table */
     {NULL, NULL},
 };
 
+static const char kDomxRpcWakeLock[] = "DOmxRpcWakelock";
 
 #define CORE_assert  CORE_paramCheck
 #define CORE_require CORE_paramCheck
@@ -140,6 +141,9 @@ OMX_ERRORTYPE OMX_Init()
 	{
 		pthread_mutex_init(&mutex, NULL);
 		eError = OMX_BuildComponentTable();
+
+		/* WAR: Release wake lock for omx rpc in case mediaserver restarted */
+	        release_wake_lock(kDomxRpcWakeLock);
 	}
 
 	eOsalError = TIMM_OSAL_MutexRelease(pCoreInitMutex);

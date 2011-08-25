@@ -1,4 +1,3 @@
-ifeq ($(BUILD_MP3_DECODER),1)
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -25,6 +24,5 @@ LOCAL_LDLIBS += \
 LOCAL_CFLAGS := $(TI_OMX_CFLAGS) -DOMAP_2430
 
 LOCAL_MODULE:= libOMX.TI.MP3.decode
-LOCAL_MODULE_TAGS := optional
+
 include $(BUILD_SHARED_LIBRARY)
-endif

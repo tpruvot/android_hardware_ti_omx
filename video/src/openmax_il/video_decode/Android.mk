@@ -11,7 +11,7 @@ LOCAL_SRC_FILES:= \
 
 LOCAL_C_INCLUDES := $(TI_OMX_COMP_C_INCLUDES) \
 	$(TI_OMX_VIDEO)/video_decode/inc \
-	
+        hardware/ti/omap4/omap3/liboverlay \
 
 ifeq ($(PERF_INSTRUMENTATION),1)
 LOCAL_C_INCLUDES += \
@@ -31,6 +31,5 @@ LOCAL_LDLIBS += \
 LOCAL_CFLAGS := $(TI_OMX_CFLAGS) -DANDROID -DOMAP_2430
 
 LOCAL_MODULE:= libOMX.TI.Video.Decoder
-LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_SHARED_LIBRARY)

@@ -3,7 +3,7 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
-TI_DOMX_TOP := hardware/ti/omx/ducati/domx
+TI_DOMX_TOP := hardware/ti/omap4/omx/ducati/domx
 
 TI_OMX_CFLAGS := -Wall -fpic -pipe -DSTATIC_TABLE -O0
 

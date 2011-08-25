@@ -1,4 +1,3 @@
-ifeq ($(BUILD_VPP),1)
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -34,10 +33,9 @@ LOCAL_CFLAGS := $(TI_OMX_CFLAGS) -DANDROID -DOMAP_2430 -g
 LOCAL_MODULE:= libOMX.TI.VPP
 
 include $(BUILD_SHARED_LIBRARY)
-endif
 
 #########################################################
-ifeq ($(BUILD_VPP_TEST),1)
+
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= tests/VPPTest.c
@@ -45,12 +43,13 @@ LOCAL_SRC_FILES:= tests/VPPTest.c
 LOCAL_C_INCLUDES := $(TI_OMX_COMP_C_INCLUDES) \
 	$(TI_OMX_VIDEO)/prepost_processor/inc \
 
-LOCAL_SHARED_LIBRARIES := $(TI_OMX_COMP_SHARED_LIBRARIES)
+LOCAL_SHARED_LIBRARIES := $(TI_OMX_COMP_SHARED_LIBRARIES) \
+	libOMX_Core
 
 LOCAL_CFLAGS := $(TI_OMX_CFLAGS)
 
 LOCAL_MODULE:= VPPTest_common
 
 include $(BUILD_EXECUTABLE)
-endif
+
 

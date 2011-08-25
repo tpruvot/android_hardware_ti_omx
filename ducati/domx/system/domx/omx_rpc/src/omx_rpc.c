@@ -57,6 +57,7 @@
 #include <stdio.h>
 #include <Std.h>
 #include <pthread.h>
+#include <errno.h>
 
 #include <OMX_Types.h>
 #include <timm_osal_interfaces.h>
@@ -69,6 +70,7 @@
 #include <ProcMgr.h>
 
 #include <SysLinkMemUtils.h>
+#include <hardware_legacy/power.h>
 
 /*-------program files ----------------------------------------*/
 #include "omx_rpc.h"
@@ -77,6 +79,10 @@
 #include "omx_rpc_skel.h"
 #include "omx_rpc_internal.h"
 #include "omx_rpc_utils.h"
+#include <utils/Log.h>
+#define LOG_TAG "DOMX_RPC"
+#define DOMX_DEBUG LOGE
+#define DOMX_ERROR LOGE
 /* **************************** MACROS DEFINES *************************** */
 
 /*For ipc setup*/
@@ -103,6 +109,9 @@ failure*/
 /*Time in msec for which the task sleeps between consecutive tries to create
 RCM client*/
 #define RPC_CLIENT_CREATE_TIME_BETWEEN_TRIES 1
+
+static const char kDomxRpcWakeLock[] = "DOmxRpcWakelock";
+
 /* ******************************* EXTERNS ********************************* */
 extern char rpcFxns[][MAX_FUNCTION_NAME_LENGTH];
 extern rpcSkelArr rpcSkelFxns[];
@@ -149,7 +158,10 @@ OMX_U32 tilerBuffers[MAX_NUMBER_OF_TILER_BUFFERS_PER_PROCESS] = { 0 };
 OMX_PTR pTilerMutex = NULL;
 
 OMX_BOOL ducatiFault = OMX_FALSE;
-pthread_t ducatiFaultHandler;
+
+static bool bDFH_Created = false;
+static pthread_t ducatiFaultHandler;
+
 #ifdef  SET_WATCHDOG_TIMEOUT
 pthread_t watchDogFaultHandler;
 #endif
@@ -176,22 +188,6 @@ static void *RPC_DucatiFaultHandler(void *);
 static void *RPC_WatchDogFaultHandler(void *);
 #endif
 
-/* ===========================================================================*/
-/**
- * @name RPC_SignalHandler_for_FaultHandlingThread()
- * @brief This is a dummy signal handler. To clean up the blocked fault handler
- *        thread, a signal is sent to unblock the thread. This is the signal
- *        handler for that signal.
- * @param nSignal  : The signal for which this is the handler.
- * @return void
- * @sa TBD
- *
- */
-/* ===========================================================================*/
-static void RPC_SignalHandler_for_FaultHandlingThread(OMX_S32 nSignal)
-{
-	DOMX_DEBUG("In Dummy signal handler - fault handler thread will now exit");
-}
 /* ===========================================================================*/
 /**
  * @name RPC_InstanceInit()
@@ -236,6 +232,12 @@ RPC_OMX_ERRORTYPE RPC_InstanceInit(OMX_STRING cComponentName,
 	/*For 1st instance, do all the setup and create client */
 	if (nInstanceCount == 1)
 	{
+		/*
+		 * Acquire wake lock to prevent userspace from being suspended
+		 *   if any client exists
+		 */
+		acquire_wake_lock(PARTIAL_WAKE_LOCK, kDomxRpcWakeLock);
+
 		eRPCError = _RPC_IpcSetup();
 		RPC_assert(eRPCError == RPC_OMX_ErrorNone, eRPCError,
 		    "Basic ipc setup failed");
@@ -272,10 +274,18 @@ RPC_OMX_ERRORTYPE RPC_InstanceInit(OMX_STRING cComponentName,
 		   thus avoiding any additional memory allocation.
 		   Clean up of the thread is then left to kernel. */
 
-		if (SUCCESS != pthread_create(&ducatiFaultHandler,
-			NULL, RPC_DucatiFaultHandler, NULL))
+		if (!bDFH_Created)
 		{
-			eRPCError = RPC_OMX_ErrorUnknown;
+			if (SUCCESS != pthread_create(&ducatiFaultHandler,
+				NULL, RPC_DucatiFaultHandler, NULL))
+			{
+				eRPCError = RPC_OMX_ErrorUnknown;
+			}
+			else
+			{
+				DOMX_DEBUG("ducatiFaultHandler thread created.\n");
+				bDFH_Created = true;
+			}
 		}
 
 		RPC_assert(eRPCError == RPC_OMX_ErrorNone, eRPCError,
@@ -336,6 +346,12 @@ RPC_OMX_ERRORTYPE RPC_InstanceInit(OMX_STRING cComponentName,
 		if (bMutex)
 		{
 			nInstanceCount--;
+			if (nInstanceCount == 0)
+			{
+				/* All clients are gone, now safe to release wake lock */
+				release_wake_lock(kDomxRpcWakeLock);
+			}
+
 			TIMM_OSAL_MutexRelease(pCreateMutex);
 		}
 		if (pRPCCtx)
@@ -419,39 +435,6 @@ RPC_OMX_ERRORTYPE RPC_InstanceDeInit(RPC_OMX_HANDLE hRPCCtx)
 			eRPCError = eTmpError;
 		}
 
-
-		/*Setting up a dummy signal handler for a user defined signal*/
-		if (signal(SIGUSR1, RPC_SignalHandler_for_FaultHandlingThread)
-			== SIG_ERR)
-		{
-			DOMX_ERROR("Could not set up signal handler - thread \
-				may not get cleaned up. This could lead to leaks.");
-			eRPCError = RPC_OMX_ErrorUndefined;
-		}
-		else
-		{
-			DOMX_DEBUG("Signal handler setup successfully");
-		}
-
-		/*Sending signal to fault handler thread to unblock it*/
-		if (SUCCESS !=  pthread_kill(ducatiFaultHandler, SIGUSR1))
-		{
-			DOMX_DEBUG("Thread does not exist - it would have \
-				already exited");
-		}
-		else
-		{
-			DOMX_DEBUG("Signal succesfully send to fault handler \
-				thread");
-		}
-		/*The fault handler thread should join successfully for
-		proper cleanup*/
-		if (SUCCESS !=  pthread_join(ducatiFaultHandler, NULL))
-		{
-			DOMX_ERROR("Join thread failed");
-			eRPCError = RPC_OMX_ErrorUndefined;
-		}
-
 		eTmpError = _RPC_IpcDestroy();
 		if (eTmpError != RPC_OMX_ErrorNone)
 		{
@@ -472,6 +455,8 @@ RPC_OMX_ERRORTYPE RPC_InstanceDeInit(RPC_OMX_HANDLE hRPCCtx)
 			}
 		}
 #endif
+		/* All clients are gone, now safe to release wake lock */
+		release_wake_lock(kDomxRpcWakeLock);
 	}
 
       EXIT:
@@ -1212,6 +1197,7 @@ void __attribute__ ((constructor)) RPC_Setup(void)
 	{
 		TIMM_OSAL_Error("Creation of tiler mutex failed.");
 	}
+
 }
 
 
@@ -1353,7 +1339,7 @@ static void *RPC_DucatiFaultHandler(void *data)
 	PROXY_COMPONENT_PRIVATE *pCompPrv = NULL;
 
 	DOMX_ENTER("Starting the DOMX MMU fault recovery handler\n");
-	DOMX_DEBUG("Waiting fatal erros from AppM3\n");
+	DOMX_DEBUG("Awaiting fatal errors from AppM3, patch applied\n");
 
 	status = ProcMgr_waitForMultipleEvents(1,	/* AppM3 ID */
 	    events, 4, -1, &i);
@@ -1399,8 +1385,10 @@ static void *RPC_DucatiFaultHandler(void *data)
                         DOMX_DEBUG("Sent fault Notification\n");
 		}
 	}
+
       EXIT:
 	DOMX_EXIT("Closing the DOMX MMU fault recovery handler.\n");
+        bDFH_Created = false;
 	return NULL;
 }
 
@@ -1432,7 +1420,7 @@ static void *RPC_WatchDogFaultHandler(void *data)
 				DOMX_DEBUG("WatchDog Semaphore Timed Out Exitting Process");
 			}
                         TIMM_OSAL_SemaphoreDelete(pWatchDogSem);
-			kill(getpid(), SIGTERM);
+			abort();
 		}
 	}
 EXIT:

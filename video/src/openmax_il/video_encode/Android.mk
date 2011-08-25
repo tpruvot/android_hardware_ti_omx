@@ -11,13 +11,12 @@ LOCAL_SRC_FILES:= \
 
 LOCAL_C_INCLUDES := $(TI_OMX_COMP_C_INCLUDES) \
 	$(TI_OMX_VIDEO)/video_encode/inc \
+    hardware/ti/omap4/omap3/liboverlay \
 
 LOCAL_SHARED_LIBRARIES := $(TI_OMX_COMP_SHARED_LIBRARIES)
 
-	
 LOCAL_CFLAGS := $(TI_OMX_CFLAGS) -DOMAP_2430
 
 LOCAL_MODULE:= libOMX.TI.Video.encoder
-LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_SHARED_LIBRARY)

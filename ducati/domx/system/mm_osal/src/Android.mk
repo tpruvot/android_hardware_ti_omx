@@ -22,6 +22,5 @@ LOCAL_CFLAGS := -pipe -fomit-frame-pointer -Wall  -Wno-trigraphs -Werror-implici
 LOCAL_CFLAGS += -DOMAP_2430 -DOMX_DEBUG -D_Android -D_POSIX_VERSION_1_
 
 LOCAL_MODULE:= libOMX_CoreOsal
-LOCAL_MODULE_TAGS:= optional
 
 include $(BUILD_SHARED_LIBRARY)
