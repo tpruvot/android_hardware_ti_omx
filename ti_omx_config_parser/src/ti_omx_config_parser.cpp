@@ -55,6 +55,11 @@
 #include "ti_omx_config_parser.h"
 #include "ti_video_config_parser.h"
 
+#define GetUnalignedWord( pb, w ) \
+            (w) = ((uint16) *(pb + 1) << 8) + *pb;
+
+#define WAVE_FORMAT_WMAUDIO3  0x0162
+
 OSCL_EXPORT_REF OMX_BOOL TIOMXConfigParser(
     OMX_PTR aInputParameters,
     OMX_PTR aOutputParameters)
@@ -75,6 +80,15 @@ OSCL_EXPORT_REF OMX_BOOL TIOMXConfigParser(
 
             if (0 == oscl_strcmp(pInputs->cComponentRole, (OMX_STRING)"audio_decoder.wma"))
             {
+                uint16 format;
+                GetUnalignedWord(aInputs.inPtr, format);
+                if(format == WAVE_FORMAT_WMAUDIO3)
+                {
+                    // Block WMA Pro, Pro+ in TI.  Do this check here rather than copying
+                    // all of PVs audio code and only making this change.
+                    return OMX_FALSE;
+                }
+
                 aInputs.iMimeType = PVMF_MIME_WMA;
 
             }
@@ -148,7 +162,7 @@ OSCL_EXPORT_REF OMX_BOOL TIOMXConfigParser(
                 return OMX_FALSE;
             }
             
-            if ((aInputs.iMimeType == PVMF_MIME_M4V) || (aInputs.iMimeType == PVMF_MIME_H264_VIDEO))
+            if ((aInputs.iMimeType == PVMF_MIME_M4V) || (aInputs.iMimeType == PVMF_MIME_H264_VIDEO) || (aInputs.iMimeType == PVMF_MIME_WMV))
             {
                 Status = ti_video_config_parser((tiVideoConfigParserInputs *)&aInputs, (tiVideoConfigParserOutputs *)aOutputParameters, pInputs->cComponentName);
             }
