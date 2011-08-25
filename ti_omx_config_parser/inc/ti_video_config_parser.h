@@ -23,9 +23,12 @@
 #include "pvmf_format_type.h"
 #include "oscl_stdstring.h"
 
-#define WVGA_MAX_WIDTH 900
-#define WVGA_MAX_HEIGHT WVGA_MAX_WIDTH
+#define WVGA_MAX_WIDTH 864
+#define WVGA_MAX_HEIGHT 480
+#define MAX_WIDTH_720P 1280
+#define MAX_HEIGHT_720P 720
 #define TI_VID_DEC "OMX.TI.Video.Decoder"
+#define ITTIAM_VID_DEC "OMX.TI.720P.Decoder"
 typedef struct
 {
     uint8 *inPtr;
@@ -39,6 +42,7 @@ typedef struct _tiVideoConfigParserOutputs
     uint32 height;
     uint32 profile;
     uint32 level;
+    uint32 entropy;
 } tiVideoConfigParserOutputs;
 
 OSCL_IMPORT_REF int16 ti_video_config_parser(
