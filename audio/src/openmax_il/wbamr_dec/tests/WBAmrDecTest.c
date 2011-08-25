@@ -283,12 +283,11 @@ static OMX_ERRORTYPE WaitForState(OMX_HANDLETYPE* pHandle,
      OMX_STATETYPE CurState = OMX_StateInvalid;
      OMX_ERRORTYPE eError = OMX_ErrorNone;
      OMX_COMPONENTTYPE *pComponent = (OMX_COMPONENTTYPE *)pHandle;
-     if (bInvalidState == OMX_TRUE)
-     {
-         eError = OMX_ErrorInvalidState;
-         return eError;
-     }
      eError = pComponent->GetState(pHandle, &CurState);
+     if (CurState == OMX_StateInvalid && bInvalidState == OMX_TRUE)
+	 {
+		 	eError = OMX_ErrorInvalidState;
+	 }
 
     if(CurState != DesiredState){
         WaitForState_flag = 1;
@@ -372,12 +371,6 @@ OMX_ERRORTYPE EventHandler(
        case OMX_EventError:
 		   if (nData1 == OMX_ErrorInvalidState) {
 		   		bInvalidState =OMX_TRUE;
-                if(WaitForState_flag == 1){
-                    WaitForState_flag = 0;
-                    pthread_mutex_lock(&WaitForState_mutex);
-                    pthread_cond_signal(&WaitForState_threshold);/*Sending Waking Up Signal*/
-                    pthread_mutex_unlock(&WaitForState_mutex);
-                }
 		   }
 
 		   else if(nData1 == OMX_ErrorResourcesPreempted) {
@@ -1295,15 +1288,16 @@ int main(int argc, char* argv[])
     pComponent->GetState(pHandle, &state);
     retval = 1;
 #ifndef WAITFORRESOURCES
-   while( (error == OMX_ErrorNone) && ((state != OMX_StateIdle) || (count < 2)) &&
-                    (state != OMX_StateInvalid)){
+   while( (error == OMX_ErrorNone) && ((state != OMX_StateIdle) || (count < 2))  ) 
+    {
 	if(1)
     {
 #else
    while(1) 
    {
-        if((eError == OMX_ErrorNone) && (state != OMX_StateIdle) || (count < 2) &&
-                    (state != OMX_StateInvalid)){
+        if((eError == OMX_ErrorNone) && (state != OMX_StateIdle) || (count < 2))  ) 
+
+        { 
 #endif
 
         FD_ZERO(&rfds);

@@ -49,8 +49,7 @@
     #include <sys/select.h>
     #include <errno.h>
     #include <fcntl.h>
-    #include <signal.h>
-    #include <sys/prctl.h>
+    #include <signal.h>	
 #endif
 
 #include <dbapi.h>
@@ -83,9 +82,7 @@ void* OMX_JpegDec_Thread (void* pThreadData)
     fd_set rfds;
     JPEGDEC_COMPONENT_PRIVATE *pComponentPrivate = (JPEGDEC_COMPONENT_PRIVATE *)pHandle->pComponentPrivate;
     OMX_U32 error = 0;
-    sigset_t set;
-
-    prctl(PR_SET_NAME, (unsigned long) "OMX-JPGDEC", 0, 0, 0);
+    sigset_t set;	
 
 #ifdef __PERF_INSTRUMENTATION__
     pComponentPrivate->pPERFcomp = PERF_Create(PERF_FOURS("JPDT"),
@@ -223,8 +220,7 @@ void* OMX_JpegDec_Thread (void* pThreadData)
             }
 
             if ((FD_ISSET(pComponentPrivate->nFilled_inpBuf_Q[0], &rfds)) &&
-                (pComponentPrivate->nCurState != OMX_StatePause) &&
-                (pComponentPrivate->nCurState != OMX_StateInvalid)) {
+                (pComponentPrivate->nCurState != OMX_StatePause)) {
 
                 eError = HandleDataBuf_FromAppJpegDec (pComponentPrivate);
                 if (eError != OMX_ErrorNone) {
@@ -238,8 +234,7 @@ void* OMX_JpegDec_Thread (void* pThreadData)
                 }
             }
 
-            if (FD_ISSET (pComponentPrivate->nFree_outBuf_Q[0], &rfds) &&
-                (pComponentPrivate->nCurState != OMX_StateInvalid)) {
+            if (FD_ISSET (pComponentPrivate->nFree_outBuf_Q[0], &rfds)) {
 
 	        OMX_PRBUFFER2(pComponentPrivate->dbg, "nFree_outBuf_Q has some buffers in Component Thread\n");
                 eError = HandleFreeOutputBufferFromAppJpegDec(pComponentPrivate);

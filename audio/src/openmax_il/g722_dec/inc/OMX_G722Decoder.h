@@ -43,7 +43,15 @@
 #ifndef OMX_G722DECODER_H
 #define OMX_G722DECODER_H
 
+
+#ifdef UNDER_CE
+#include <windows.h>
+#include <oaf_osal.h>
+#include <omx_core.h>
+#include <stdlib.h>
+#else
 #include <pthread.h>
+#endif
 
 #include <OMX_Component.h>
 

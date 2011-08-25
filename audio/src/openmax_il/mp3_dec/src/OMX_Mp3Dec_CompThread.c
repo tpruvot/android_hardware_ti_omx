@@ -50,24 +50,36 @@
 ****************************************************************/
 /* ----- system and platform files ----------------------------*/
 
+
+
+#ifdef UNDER_CE
+#include <windows.h>
+#include <oaf_osal.h>
+#include <omx_core.h>
+#include <stdlib.h>
+#else
 #include <wchar.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/prctl.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <dlfcn.h>
 #include <sys/select.h>
 #include <memory.h>
 #include <fcntl.h>
 #include <signal.h>
+#endif
 
 #include <dbapi.h>
 #include <string.h>
 #include <stdio.h>
+
 #ifdef ANDROID
 #include <utils/threads.h>
+#include <linux/prctl.h>
 #endif
+
 #include "OMX_Mp3Dec_Utils.h"
 
 /* ================================================================================= * */
@@ -99,8 +111,8 @@ void* MP3DEC_ComponentThread (void* pThreadData)
 
 #ifdef ANDROID
     setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_AUDIO);
+    prctl(PR_SET_NAME, (unsigned long)"MP3Component", 0, 0, 0);
 #endif
-    prctl(PR_SET_NAME, (unsigned long) "OMX-MP3DEC", 0, 0, 0);
 
     OMX_PRINT1(pComponentPrivate->dbg, ":: Entering ComponentThread \n");
 
@@ -123,15 +135,21 @@ void* MP3DEC_ComponentThread (void* pThreadData)
         tv.tv_sec = 1;
         tv.tv_nsec = 0;
 
+#ifndef UNDER_CE
         sigset_t set;
         sigemptyset (&set);
         sigaddset (&set, SIGALRM);
         status = pselect (fdmax+1, &rfds, NULL, NULL, &tv, &set);
+#else
+        status = select (fdmax+1, &rfds, NULL, NULL, &tv);
+#endif
 
         if (pComponentPrivate->bExitCompThrd == 1) {
             OMX_PRINT1(pComponentPrivate->dbg, ":: Comp Thrd Exiting here...\n");
             goto EXIT;
         }
+
+
 
         if (0 == status) {
             OMX_PRSTATE2(pComponentPrivate->dbg, "\n\n\n!!!!!  Component Time Out !!!!!!!!!!!! \n");
@@ -146,6 +164,7 @@ void* MP3DEC_ComponentThread (void* pThreadData)
                 OMX_ERROR4(pComponentPrivate->dbg, ":: Comp Thrd Exiting here...\n");
                 goto EXIT;
             }
+
 
         } else if (-1 == status) {
             OMX_ERROR4(pComponentPrivate->dbg, ":: Error in Select\n");
@@ -172,7 +191,6 @@ void* MP3DEC_ComponentThread (void* pThreadData)
                 OMX_ERROR2(pComponentPrivate->dbg, ":: Error From HandleDataBuf_FromApp\n");
                 break;
             }
-
         } else if (FD_ISSET (pComponentPrivate->cmdPipe[0], &rfds)) {
             OMX_PRCOMM2(pComponentPrivate->dbg, ":: CMD pipe is set in Component Thread\n");
             nRet = MP3DEC_HandleCommand (pComponentPrivate);
@@ -184,7 +202,7 @@ void* MP3DEC_ComponentThread (void* pThreadData)
                 pComponentPrivate->curState = OMX_StateLoaded;
 #ifdef __PERF_INSTRUMENTATION__
                 PERF_Boundary(pComponentPrivate->pPERFcomp,PERF_BoundaryComplete | PERF_BoundaryCleanup);
-#endif
+#endif			
                 if(pComponentPrivate->bPreempted == 0){
                     pComponentPrivate->cbInfo.EventHandler(pHandle, pHandle->pApplicationPrivate,
                                                            OMX_EventCmdComplete,
@@ -200,12 +218,13 @@ void* MP3DEC_ComponentThread (void* pThreadData)
                     pComponentPrivate->bPreempted = 0;
                 }
             }
-        }
+        }   
     }
 EXIT:
 
     pComponentPrivate->bCompThreadStarted = 0;
 
+	
 #ifdef __PERF_INSTRUMENTATION__
     PERF_Done(pComponentPrivate->pPERFcomp);
 #endif

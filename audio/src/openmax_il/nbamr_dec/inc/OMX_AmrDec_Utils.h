@@ -108,7 +108,11 @@
  *                                           at initialization
  */
 /* ======================================================================= */
-#define NBAMRDEC_USN_DLL_NAME "usn.dll64P"
+#ifdef UNDER_CE
+	#define NBAMRDEC_USN_DLL_NAME "\\windows\\usn.dll64P"
+#else
+	#define NBAMRDEC_USN_DLL_NAME "usn.dll64P"
+#endif
 
 /* ======================================================================= */
 /**
@@ -116,7 +120,11 @@
  *                                           at initialization
  */
 /* ======================================================================= */
-#define NBAMRDEC_DLL_NAME "nbamrdec_sn.dll64P"
+#ifdef UNDER_CE
+	#define NBAMRDEC_DLL_NAME "\\windows\\nbamrdec_sn.dll64P"
+#else
+	#define NBAMRDEC_DLL_NAME "nbamrdec_sn.dll64P"
+#endif
 
 OMX_ERRORTYPE NBAMRDECGetCorresponding_LCMLHeader(AMRDEC_COMPONENT_PRIVATE *pComponentPrivate,
                                           OMX_U8 *pBuffer,
@@ -146,13 +154,23 @@ OMX_ERRORTYPE NBAMRDECFill_LCMLInitParamsEx(OMX_HANDLETYPE pComponent);
 OMX_U32 NBAMRDEC_IsValid(AMRDEC_COMPONENT_PRIVATE *pComponentPrivate, OMX_U8 *pBuffer, OMX_DIRTYPE eDir) ;
 OMX_ERRORTYPE OMX_DmmMap(DSP_HPROCESSOR ProcHandle, int size, void* pArmPtr, DMM_BUFFER_OBJ* pDmmBuf, struct OMX_TI_Debug dbg);
 OMX_ERRORTYPE OMX_DmmUnMap(DSP_HPROCESSOR ProcHandle, void* pMapPtr, void* pResPtr, struct OMX_TI_Debug dbg);
-void NBAMRDEC_waitForAllBuffersToReturn(
-                                        AMRDEC_COMPONENT_PRIVATE *pComponentPrivate);
+
 #ifdef RESOURCE_MANAGER_ENABLED
 void NBAMR_ResourceManagerCallback(RMPROXY_COMMANDDATATYPE cbData);
 #endif
 
-void NBAMRDEC_FatalErrorRecover(AMRDEC_COMPONENT_PRIVATE *pComponentPrivate);
 void NBAMRDEC_HandleUSNError (AMRDEC_COMPONENT_PRIVATE *pComponentPrivate, OMX_U32 arg);
+#ifdef UNDER_CE
+	#ifndef _OMX_EVENT_
+		#define _OMX_EVENT_
+		typedef struct OMX_Event {
+			HANDLE event;
+		} OMX_Event;
+	#endif
+	int OMX_CreateEvent(OMX_Event *event);
+	int OMX_SignalEvent(OMX_Event *event);
+	int OMX_WaitForEvent(OMX_Event *event);
+	int OMX_DestroyEvent(OMX_Event *event);
+#endif
 
 #endif

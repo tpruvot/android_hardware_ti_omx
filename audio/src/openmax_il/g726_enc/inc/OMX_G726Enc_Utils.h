@@ -51,13 +51,15 @@
 #include <pthread.h>
 #include "LCML_DspCodec.h"
 #include <OMX_Component.h>
-#include "OMX_TI_Common.h"
 #include <TIDspOmx.h>
 
 #ifdef RESOURCE_MANAGER_ENABLED
 #include <ResourceManagerProxyAPI.h>
 #endif
 
+#ifdef UNDER_CE
+	#define sleep Sleep
+#endif
 
 
 /* ======================================================================= */
@@ -74,6 +76,7 @@
 /* ======================================================================= */
 #undef G726ENC_MEMCHECK
 
+#ifndef UNDER_CE
 /* ======================================================================= */
 /**
  * @def    G726ENC_DEBUG   Debug print macro
@@ -95,6 +98,30 @@
         #define G726ENC_MEMPRINT(...)
 #endif
 
+#else   /*UNDER_CE*/
+/* ======================================================================= */
+/**
+ * @def    G726ENC_DEBUG   Debug print macro
+ */
+/* ======================================================================= */
+#ifdef  G726ENC_DEBUG
+    #define G726ENC_DPRINT(STR, ARG...) printf()
+#else
+
+#endif
+
+/* ======================================================================= */
+/**
+ * @def    G726ENC_MEMCHECK   Memory print macro
+ */
+/* ======================================================================= */
+#ifdef  G726ENC_MEMCHECK
+		#define G726ENC_MEMPRINT(STR, ARG...) printf()
+#else
+
+#endif
+
+#endif
 
 #ifdef DEBUG
 		#define G726ENC_DPRINT(...)    fprintf(stderr,__VA_ARGS__)
@@ -105,6 +132,16 @@
 		#define G726ENC_MEMPRINT(...)
 		#define G726ENC_EPRINT(...)
 #endif
+
+/* ======================================================================= */
+/**
+ * @def    G726ENC_DEBUGMEM   Turns memory leaks messaging on and off.
+ *         APP_DEBUGMEM must be defined in Test App in order to get
+ *         this functionality On.
+ */
+/* ======================================================================= */
+#undef G726ENC_DEBUGMEM
+/*#define G726ENC_DEBUGMEM*/
 
 /* ======================================================================= */
 /**
@@ -120,6 +157,12 @@
     (_s_)->nVersion.s.nRevision = 0x0;		\
     (_s_)->nVersion.s.nStep = 0x0
 
+#define OMX_NBMEMFREE_STRUCT(_pStruct_)\
+	G726ENC_MEMPRINT("%d :: [FREE] %p\n",__LINE__,_pStruct_);\
+    if(_pStruct_ != NULL){\
+        SafeFree(_pStruct_);\
+	    _pStruct_ = NULL;\
+	}
 
 #define OMX_NBCLOSE_PIPE(_pStruct_,err)\
 	G726ENC_DPRINT("%d :: CLOSING PIPE \n",__LINE__);\
@@ -129,6 +172,18 @@
 		printf("%d :: Error while closing pipe\n",__LINE__);\
 		goto EXIT;\
 	}
+
+#define OMX_NBMALLOC_STRUCT(_pStruct_, _sName_)   \
+    _pStruct_ = (_sName_*)SafeMalloc(sizeof(_sName_));      \
+    if(_pStruct_ == NULL){      \
+        printf("***********************************\n"); \
+        printf("%d :: Malloc Failed\n",__LINE__); \
+        printf("***********************************\n"); \
+        eError = OMX_ErrorInsufficientResources; \
+        goto EXIT;      \
+    } \
+    G726ENC_MEMPRINT("%d :: [ALLOC] %p\n",__LINE__,_pStruct_);
+
 
 /* ======================================================================= */
 /**
@@ -247,14 +302,22 @@
  * @def    G726ENC_USN_DLL_NAME   USN DLL name
  */
 /* ======================================================================= */
-#define G726ENC_USN_DLL_NAME "usn.dll64P"
+#ifdef UNDER_CE
+	#define G726ENC_USN_DLL_NAME "\\windows\\usn.dll64P"
+#else
+	#define G726ENC_USN_DLL_NAME "usn.dll64P"
+#endif
 
 /* ======================================================================= */
 /**
  * @def    G726ENC_DLL_NAME   G726 Encoder socket node dll name
  */
 /* ======================================================================= */
-#define G726ENC_DLL_NAME "g726enc_sn.dll64P"
+#ifdef UNDER_CE
+	#define G726ENC_DLL_NAME "\\windows\\g726enc_sn.dll64P"
+#else
+	#define G726ENC_DLL_NAME "g726enc_sn.dll64P"
+#endif
 
 /* ======================================================================= */
 /** G726ENC_StreamType  Stream types
@@ -569,8 +632,7 @@ typedef struct G726ENC_COMPONENT_PRIVATE
     /** Number of outstanding FillBufferDone() calls */
     OMX_U32 nOutStandingFillDones;
 
-    /** Tells whether mutex have been initialized or not */
-    OMX_U32 bMutexInit;
+#ifndef UNDER_CE
     /** sync mutexes and signals */
     pthread_mutex_t AlloBuf_mutex;
     pthread_cond_t AlloBuf_threshold;
@@ -583,6 +645,7 @@ typedef struct G726ENC_COMPONENT_PRIVATE
     pthread_mutex_t InIdle_mutex;
     pthread_cond_t InIdle_threshold;
     OMX_U8 InIdle_goingtoloaded;
+#endif
     /** pointer to LCML lib */
     void* ptrLibLCML;
 
@@ -594,9 +657,6 @@ typedef struct G726ENC_COMPONENT_PRIVATE
 
     /** device string */
     OMX_STRING* sDeviceString;
-
-    /** MMU Fault flag */
-    OMX_BOOL DSPMMUFault;
 
     /** runtime input buffers */
     OMX_U8 nRuntimeInputBuffers;
@@ -638,6 +698,12 @@ typedef struct G726ENC_COMPONENT_PRIVATE
 
 } G726ENC_COMPONENT_PRIVATE;
 
+
+#ifndef UNDER_CE
+    OMX_ERRORTYPE OMX_ComponentInit (OMX_HANDLETYPE hComp);
+#else
+/*  WinCE Implicit Export Syntax */
+#define OMX_EXPORT __declspec(dllexport)
 /* =================================================================================== */
 /**
 *  OMX_ComponentInit()  Initializes component
@@ -650,8 +716,8 @@ typedef struct G726ENC_COMPONENT_PRIVATE
 *
 */
 /* =================================================================================== */
-
-    OMX_ERRORTYPE OMX_ComponentInit (OMX_HANDLETYPE hComp);
+OMX_EXPORT OMX_ERRORTYPE OMX_ComponentInit (OMX_HANDLETYPE hComp);
+#endif
 
 #define G726ENC_EXIT_COMPONENT_THRD  10
 /* =================================================================================== */
@@ -913,19 +979,6 @@ OMX_U32 G726ENC_IsValid(G726ENC_COMPONENT_PRIVATE *pComponentPrivate,
  ***********************************/
 void G726ENC_ResourceManagerCallback(RMPROXY_COMMANDDATATYPE cbData);
 #endif
-
-/*  ==============================================================*/
-/* G726ENC_FatalErrorRecover
-*
-* @desc    handles the clean up and sets OMX_StateInvalid in reaction to fatal errors
-*
-* @param pComponentPrivate    Component private data
-*
-* @return n/a
-*/
-/* ===============================================================*/
-
-void G726ENC_FatalErrorRecover(G726ENC_COMPONENT_PRIVATE *pComponentPrivate);
 
 /* ======================================================================= */
 /** OMX_G726ENC_INDEXAUDIOTYPE  Defines the custom configuration settings

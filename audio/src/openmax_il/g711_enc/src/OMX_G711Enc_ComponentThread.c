@@ -48,6 +48,12 @@
  *  INCLUDE FILES
  ****************************************************************/
 /* ----- system and platform files ----------------------------*/
+
+#ifdef UNDER_CE
+#include <windows.h>
+#include <oaf_osal.h>
+#include <omx_core.h>
+#else
 #include <dbapi.h>
 #include <unistd.h>
 #include <sys/time.h>
@@ -60,6 +66,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
+#endif
 /*-------program files ----------------------------------------*/
 #include <OMX_Component.h>
 
@@ -100,10 +107,16 @@ void* G711ENC_CompThread(void* pThreadData)
         FD_SET (pComponentPrivate->dataPipe[0], &rfds);
         tv.tv_sec = 1;
         tv.tv_nsec = 0;
+
+#ifndef UNDER_CE
         sigset_t set;
         sigemptyset (&set);
         sigaddset (&set, SIGALRM);
         status = pselect (fdmax+1, &rfds, NULL, NULL, &tv, &set);
+#else
+        status = select (fdmax+1, &rfds, NULL, NULL, &tv);
+#endif
+
 
         if (0 == status) {
             if (pComponentPrivate->bIsThreadstop == 1)   {
@@ -117,7 +130,7 @@ void* G711ENC_CompThread(void* pThreadData)
                 pComponentPrivate->bIsEOFSent = 0;
                 if (pComponentPrivate->curState != OMX_StateIdle) {
                     G711ENC_DPRINT("%d :: pComponentPrivate->curState is not OMX_StateIdle\n",__LINE__);
-                    return (void*)eError;
+                    goto EXIT;
                 }
             }
             G711ENC_DPRINT("%d :: Component Time Out !!!!! \n",__LINE__);
@@ -138,7 +151,7 @@ void* G711ENC_CompThread(void* pThreadData)
             ret = read(pComponentPrivate->dataPipe[0], &pBufHeader, sizeof(pBufHeader));
             if (ret == -1) {
                 G711ENC_DPRINT("%d :: Error while reading from the pipe\n",__LINE__);
-                return (void*)eError;
+                goto EXIT;
             }
             eError = G711ENC_HandleDataBufFromApp(pBufHeader,pComponentPrivate);
             if (eError != OMX_ErrorNone) {
@@ -172,7 +185,7 @@ void* G711ENC_CompThread(void* pThreadData)
             }
         }
     }
-
+ EXIT:
     G711ENC_DPRINT("%d :: Exiting G711ENC_CompThread\n", __LINE__);
     G711ENC_DPRINT("%d :: Returning = 0x%x\n",__LINE__,eError);
     return (void*)eError;
