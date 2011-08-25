@@ -1,25 +1,28 @@
-
-ifdef HARDWARE_OMX
+ifeq ($(HARDWARE_OMX),true)
 
 LOCAL_PATH := $(call my-dir)
+TI_OMX_TOP := $(LOCAL_PATH)
 
 include $(CLEAR_VARS)
 
-TI_BRIDGE_INCLUDES := hardware/ti/omap3/dspbridge/inc
+TI_BRIDGE_TOP := $(TOP)/hardware/ti/omap3/dspbridge
+
+# Recent versions contains api folder
+TI_BRIDGE_INCLUDES := $(TI_BRIDGE_TOP)/inc $(TI_BRIDGE_TOP)/api/inc
 
 OMX_DEBUG := 1
 RESOURCE_MANAGER_ENABLED := 0
+ENABLE_RMPM_STUB := 0
+DVFS_ENABLED := 0
 PERF_INSTRUMENTATION := 0
 PERF_CUSTOMIZABLE := 1
 PERF_READER := 1
 
-TI_OMX_CFLAGS := -Wall -fpic -pipe -DSTATIC_TABLE -O0 -DOMAP_3430
-ifeq ($(RESOURCE_MANAGER_ENABLED),1)
-TI_OMX_CFLAGS += -DRESOURCE_MANAGER_ENABLED 
-endif
-ifeq ($(PERF_INSTRUMENTATION),1)
-TI_OMX_CFLAGS += -D__PERF_INSTRUMENTATION__
-endif
+TI_OMX_CFLAGS := -Wall -fpic -pipe -finline-functions -DSTATIC_TABLE -O0
+
+# required to have DSP_NODEATTRIN.uProfileID in LCML_DspCodec.c
+TI_OMX_CFLAGS += -DOMAP_3430 -DOMAP_2430
+
 ifeq ($(BUILD_WITH_TI_AUDIO),1)
 TI_OMX_CFLAGS += -DBUILD_WITH_TI_AUDIO
 BUILD_AAC_DECODER := 1
@@ -36,19 +39,27 @@ TI_OMX_AUDIO := $(TI_OMX_TOP)/audio/src/openmax_il
 TI_OMX_IMAGE := $(TI_OMX_TOP)/image/src/openmax_il
 
 TI_OMX_INCLUDES := \
-	$(TI_OMX_SYSTEM)/omx_core/inc
+        $(TI_OMX_SYSTEM)/omx_core/inc
 
 TI_OMX_COMP_SHARED_LIBRARIES := \
-	libdl \
-	libbridge \
-	libOMX_Core \
-	libLCML \
-	libcutils \
-	liblog	
+        libdl \
+        libcutils \
+        liblog \
+        libbridge \
+        libOMX_Core \
+        libLCML \
 
 ifeq ($(PERF_INSTRUMENTATION),1)
-TI_OMX_COMP_SHARED_LIBRARIES += \
-	libPERF
+TI_OMX_COMP_SHARED_LIBRARIES += libPERF
+endif
+
+ifeq ($(RESOURCE_MANAGER_ENABLED),1)
+TI_OMX_CFLAGS += -DRESOURCE_MANAGER_ENABLED
+TI_OMX_COMP_SHARED_LIBRARIES += libOMX_ResourceManagerProxy
+endif
+
+ifeq ($(PERF_INSTRUMENTATION),1)
+TI_OMX_CFLAGS += -D__PERF_INSTRUMENTATION__
 endif
 
 ifeq ($(ENABLE_RMPM_STUB),1)
@@ -61,12 +72,14 @@ endif
 
 
 TI_OMX_COMP_C_INCLUDES := \
-	$(TI_OMX_INCLUDES) \
-	$(TI_BRIDGE_INCLUDES) \
-	$(TI_OMX_SYSTEM)/lcml/inc \
-	$(TI_OMX_SYSTEM)/common/inc \
-	$(TI_OMX_SYSTEM)/perf/inc 
-
+        $(TI_OMX_INCLUDES) \
+        $(TI_BRIDGE_INCLUDES) \
+        $(TI_OMX_SYSTEM)/lcml/inc \
+        $(TI_OMX_SYSTEM)/common/inc \
+        $(TI_OMX_SYSTEM)/perf/inc \
+        $(TI_OMX_SYSTEM)/resource_manager/inc \
+        $(TI_OMX_SYSTEM)/resource_manager_proxy/inc \
+        $(TI_OMX_SYSTEM)/omx_policy_manager/inc \
 
 ifeq ($(PERF_INSTRUMENTATION),1)
 include $(TI_OMX_SYSTEM)/perf/Android.mk
@@ -80,8 +93,12 @@ endif
 #call to common omx & system components
 include $(TI_OMX_SYSTEM)/omx_core/src/Android.mk
 include $(TI_OMX_SYSTEM)/lcml/src/Android.mk
+#include $(TI_OMX_SYSTEM)/resource_manager/Android.mk
+#include $(TI_OMX_SYSTEM)/resource_manager_proxy/Android.mk
+#include $(TI_OMX_SYSTEM)/omx_policy_manager/Android.mk
 
 #call to audio
+include $(TI_OMX_TOP)/audio/tests/Android.mk
 include $(TI_OMX_AUDIO)/aac_dec/src/Android.mk
 include $(TI_OMX_AUDIO)/aac_enc/src/Android.mk
 include $(TI_OMX_AUDIO)/aac_enc/tests/Android.mk
@@ -112,8 +129,12 @@ include $(TI_OMX_AUDIO)/g729_dec/src/Android.mk
 include $(TI_OMX_AUDIO)/g729_dec/tests/Android.mk
 include $(TI_OMX_AUDIO)/g729_enc/src/Android.mk
 include $(TI_OMX_AUDIO)/g729_enc/tests/Android.mk
+include $(TI_OMX_AUDIO)/ilbc_dec/src/Android.mk
+include $(TI_OMX_AUDIO)/ilbc_enc/src/Android.mk
+
 #call to video
 include $(TI_OMX_VIDEO)/video_decode/Android.mk
+include $(TI_OMX_VIDEO)/video_decode/test/Android.mk
 include $(TI_OMX_VIDEO)/video_encode/Android.mk
 include $(TI_OMX_VIDEO)/video_encode/test/Android.mk
 include $(TI_OMX_VIDEO)/prepost_processor/Android.mk
@@ -122,11 +143,13 @@ include $(TI_OMX_VIDEO)/prepost_processor/Android.mk
 include $(TI_OMX_IMAGE)/jpeg_enc/Android.mk
 include $(TI_OMX_IMAGE)/jpeg_dec/Android.mk
 
-#call to plugin
+#call to plugin (froyo only ?)
+#ifneq ($(filter 2.2%,$(PLATFORM_VERSION)),)
 include $(TI_OMX_TOP)/core_plugin/Android.mk
+#endif
 
 #call to ti_omx_config_parser
 include $(TI_OMX_TOP)/ti_omx_config_parser/Android.mk
 
-endif
+endif # HARDWARE_OMX
 

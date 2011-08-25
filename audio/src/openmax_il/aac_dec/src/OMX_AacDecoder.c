@@ -1244,19 +1244,19 @@ static OMX_ERRORTYPE SetCallbacks (OMX_HANDLETYPE pComponent,
 
 
     AACDEC_OMX_CONF_CHECK_CMD(pHandle,1,1)
-        pComponentPrivate = (AACDEC_COMPONENT_PRIVATE *)pHandle->pComponentPrivate;
+    pComponentPrivate = (AACDEC_COMPONENT_PRIVATE *)pHandle->pComponentPrivate;
 
     AACDEC_OMX_CONF_CHECK_CMD(pComponentPrivate,1,1)
 
     AACDEC_OMX_CONF_CHECK_CMD(pCallBacks, pCallBacks->EventHandler, pCallBacks->EmptyBufferDone)
-        AACDEC_OMX_CONF_CHECK_CMD(pCallBacks->FillBufferDone, 1, 1)
+    AACDEC_OMX_CONF_CHECK_CMD(pCallBacks->FillBufferDone, 1, 1)
 
-        memcpy (&(pComponentPrivate->cbInfo), pCallBacks, sizeof(OMX_CALLBACKTYPE));
+    memcpy (&(pComponentPrivate->cbInfo), pCallBacks, sizeof(OMX_CALLBACKTYPE));
     pHandle->pApplicationPrivate = pAppData;
     OMX_PRSTATE2(pComponentPrivate->dbg, "****************** Component State Set to Loaded\n\n");
     pComponentPrivate->curState = OMX_StateLoaded;
 
- EXIT:
+EXIT:
     return eError;
 }
 
