@@ -51,7 +51,6 @@
 #include <DSPManager.h>
 #include <DSPProcessor.h>
 #include <DSPProcessor_OEM.h>
-#include <OMX_TI_Common.h>
 
 #define KHRONOS_1_2
 
@@ -77,7 +76,6 @@ int fill_data (OMX_BUFFERHEADERTYPE *pBuf, FILE *fIn);
 
 #define DEFAULT_WIDTH      (176)
 #define DEFAULT_HEIGHT     (144)
-#define PSELECT_TIMEOUT_S  (5)
 
 
 typedef struct _OMX_VPPCustomTYPE
@@ -523,16 +521,7 @@ int main(int argc, char* argv[])
     int bStopExit=OMX_FALSE;
     int MAX_VPP_BUFFERS_IN_USE = MAX_VPP_BUFFERS;
     sigset_t set;	
-/* pselect timout indicator
- * */
-    struct timespec timeOut;
-/* Clear the variable
- * */
-    memset(&timeOut, 0, sizeof(struct timespec));
-/* Set it to its timeout value.
- * */
-    timeOut.tv_sec = PSELECT_TIMEOUT_S;
-
+    
     /* validate command line args */
     if(argc < 13) {
 #ifdef UNDER_CE
@@ -543,7 +532,6 @@ int main(int argc, char* argv[])
         printf("usage: %s <input.yuv><file_desc><Inp. Width><Inp. Height><Inp. color><0:no overlay/1:overlay><Out. Width><Out Height><yuv color><rgb color><0 :Internal 1 :external allocation><Feature [0-8]>\n",
                 argv[0]);               
         printf("./VPPTest_common patterns/qciftest.yuv qcif_qqcif  176 144 1 0 88 72 1 2 0 0\n");
-        printf("Last Update: " __DATE__ " " __TIME__ "\n");
 #endif
         return -1;
     }
@@ -1177,12 +1165,12 @@ int main(int argc, char* argv[])
             }
         }
         else{
-            OMX_MALLOC_SIZE_DSPALIGN(pInBuffer, pCompPrivateStruct->nBufferSize,
-            OMX_U8);
+            pInBuffer = malloc(pCompPrivateStruct->nBufferSize +256);
             if(pInBuffer == NULL){
                 error = OMX_ErrorInsufficientResources;
                 goto EXIT;
             }
+            pInBuffer += 128;
             for(nCounter=0; nCounter<MAX_VPP_BUFFERS_IN_USE; nCounter++){ /*MultiBuffer*/
                 error = OMX_UseBuffer(pHandle, &InputBufHeader[nCounter], 
                             MyVppPortDef.input_port, 
@@ -1237,12 +1225,12 @@ int main(int argc, char* argv[])
                 }
             }
             else{
-                OMX_MALLOC_SIZE_DSPALIGN(pRGBBuffer,
-                pCompPrivateStruct->nBufferSize, OMX_U8);
+                pRGBBuffer = malloc(pCompPrivateStruct->nBufferSize + 256);
                 if(pRGBBuffer == NULL){
                     error = OMX_ErrorInsufficientResources;
                     goto EXIT;
                 }
+                pRGBBuffer += 128;
                 for(nCounter = 0; nCounter<MAX_VPP_BUFFERS_IN_USE; nCounter++){ /*MultiBuffer*/
                     error = OMX_UseBuffer(pHandle, &OutRGBBufHeader[nCounter], 
                                 MyVppPortDef.rgboutput_port, 
@@ -1278,12 +1266,12 @@ int main(int argc, char* argv[])
                 }
             }
             else{
-                OMX_MALLOC_SIZE_DSPALIGN(pYUVBuffer,
-                pCompPrivateStruct->nBufferSize, OMX_U8);
+                pYUVBuffer = malloc(pCompPrivateStruct->nBufferSize +256);
                 if(pYUVBuffer == NULL){
                     error = OMX_ErrorInsufficientResources;
                     goto EXIT;
                 }
+                pYUVBuffer += 128;
                 for(nCounter=0; nCounter<MAX_VPP_BUFFERS_IN_USE; nCounter++){  /*MultiBuffer*/
                     error = OMX_UseBuffer(pHandle, &OutYUVBufHeader[nCounter], 
                                 MyVppPortDef.yuvoutput_port, 
@@ -1613,8 +1601,8 @@ int main(int argc, char* argv[])
                 FD_SET(Event_Pipe[0],&rfds);
                 sigemptyset(&set) ;
                 sigaddset(&set, SIGALRM);
-
-                retval = pselect(fdmax+1, &rfds, NULL, NULL, &timeOut,&set);
+		  
+                retval = pselect(fdmax+1, &rfds, NULL, NULL, NULL,&set);
                 if(retval == -1) {
 #ifndef UNDER_CE 
                     perror("select()");
@@ -2007,8 +1995,7 @@ int main(int argc, char* argv[])
             goto EXIT;
         }
         free(pCompPrivateStruct);   /*Free all m(allocated) resources to avoid memory leaks*/
-
-        pCompPrivateStruct=NULL;
+    
         printf ("VPPTEST:: App: State Of Component Is Loaded Now\n");
        
        if(MyState == OMX_StateInvalid){
@@ -2047,14 +2034,17 @@ EXIT:
             pCompPrivateStruct = NULL;
         }
         if(pInBuffer){
+            pInBuffer -= 128;
             free(pInBuffer);
             pInBuffer = NULL;
         }
         if(pRGBBuffer){
+            pRGBBuffer -= 128;
             free(pRGBBuffer);
             pRGBBuffer = NULL;
         }
         if(pYUVBuffer){
+            pYUVBuffer -= 128;
             free(pYUVBuffer);
             pYUVBuffer = NULL;
         }
@@ -2409,7 +2399,7 @@ int LoadBaseImage() {
     
     struct DSP_PROCESSORINFO dspInfo;
     DSP_HPROCESSOR hProc;
-    int status = 0;
+    DSP_STATUS status = DSP_SOK;
     unsigned int numProcs;
     char* argv[2];
    
@@ -2425,7 +2415,7 @@ int LoadBaseImage() {
         if ((dspInfo.uProcessorType == DSPTYPE_55) || 
             (dspInfo.uProcessorType == DSPTYPE_64)) {
             uProcId = index;
-            status = 0;
+            status = DSP_SOK;
             break;
         }
         index++;

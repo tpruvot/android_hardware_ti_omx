@@ -50,7 +50,6 @@ typedef struct
     OMX_U32 height;
     OMX_U32 profile;
     OMX_U32 level;
-    OMX_BOOL interlaced;
 } VideoOMXConfigParserOutputs;
 
 #endif

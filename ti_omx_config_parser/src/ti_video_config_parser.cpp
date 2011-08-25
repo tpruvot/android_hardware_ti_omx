@@ -65,9 +65,6 @@ int32 GetNAL_Config(uint8** bitstream, int32* size);
 
 OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs, tiVideoConfigParserOutputs *aOutputs, char* pComponentName)
 {
-    //assume progressive content. update interlaced later
-    aOutputs->interlaced = 0;
-
     if (aInputs->iMimeType == PVMF_MIME_M4V) //m4v
     {
         mp4StreamType psBits;
@@ -85,8 +82,7 @@ OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs,
         int32 width, height, display_width, display_height = 0;
         int32 profile_level = 0;
         int16 retval = 0;
-        uint32 interlaced = 0;
-        retval = iDecodeVOLHeader(&psBits, &width, &height, &display_width, &display_height, &profile_level, &interlaced);
+        retval = iDecodeVOLHeader(&psBits, &width, &height, &display_width, &display_height, &profile_level);
         if (retval != 0)
         {
             return retval;
@@ -95,7 +91,6 @@ OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs,
         aOutputs->height = (uint32)display_height;
         aOutputs->profile = (uint32)profile_level; // for mp4, profile/level info is packed
         aOutputs->level = 0;
-        aOutputs->interlaced = interlaced;
 
     }
     else if (aInputs->iMimeType == PVMF_MIME_H2631998 ||
@@ -113,8 +108,6 @@ OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs,
         int32 width, height, display_width, display_height = 0;
         int32 profile_idc, level_idc = 0;
         uint32 entropy_coding_mode_flag = 0;
-
-        uint32 frame_mb_only_flag = 0;
 
         uint8 *tp = aInputs->inPtr;
 
@@ -152,9 +145,7 @@ OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs,
                                    (int*) & display_height,
                                    (int*) & profile_idc,
                                    (int*) & level_idc,
-                                   (uint*) & entropy_coding_mode_flag,
-                                   (uint*) & frame_mb_only_flag);
-
+                                   (uint*) & entropy_coding_mode_flag);
         if (retval != 0)
         {
             return retval;
@@ -163,7 +154,19 @@ OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs,
         aOutputs->height = (uint32)display_height;
         aOutputs->profile = (uint32)profile_idc;
         aOutputs->level = (uint32) level_idc;
-        aOutputs->interlaced = (uint32) (frame_mb_only_flag?0:1); //0-progressive. 1-interlaced
+
+        /*When 720p and other profiles may be handled by other Video Decoder OMX Component,
+          this will let PV know that it will need to load other compponent*/
+        if ( 0 == oscl_strncmp (pComponentName, TI_VID_DEC, oscl_strlen (TI_VID_DEC)) )
+        {
+            if( ((width > WVGA_MAX_WIDTH) || (height > WVGA_MAX_HEIGHT)) ||
+                (profile_idc != H264_PROFILE_IDC_BASELINE) ||
+                entropy_coding_mode_flag )
+            {
+                return -1;
+            }
+        }
+
     }
     else if (aInputs->iMimeType == PVMF_MIME_WMV) //wmv
     {

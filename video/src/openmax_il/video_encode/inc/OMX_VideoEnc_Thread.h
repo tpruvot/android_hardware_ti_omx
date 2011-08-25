@@ -50,6 +50,4 @@
 
 void* OMX_VIDENC_Thread (void* pThreadData);
 
-void* OMX_VIDENC_Return (void* pThreadData, OMX_U32 nPortId);
-
 #endif

@@ -290,8 +290,7 @@ OMX_ERRORTYPE VPP_AllocateBuffer(OMX_IN OMX_HANDLETYPE hComponent,
         if(nPortIndex == OMX_VPP_INPUT_OVERLAY_PORT){
             /* Allocate buffer for overlay process only one buffer*/
             if(pComponentPrivate->RGBbuffer == NULL){
-                OMX_MALLOC_SIZE_DSPALIGN(pComponentPrivate->RGBbuffer, nBufSize,
-                OMX_U8);
+                OMX_MALLOC(pComponentPrivate->RGBbuffer, nBufSize);
             }
         }
     }
@@ -309,9 +308,20 @@ OMX_ERRORTYPE VPP_AllocateBuffer(OMX_IN OMX_HANDLETYPE hComponent,
     pBufferHdr->nTickCount       = 0;
     pBufferHdr->nTimeStamp     = 0;
  
-    OMX_MALLOC_SIZE_DSPALIGN(pBufferStart, nBufSize, OMX_U8);
+    OMX_MALLOC(pBufferStart, nBufSize + 32 + 256);
 
-    pBufferHdr->pBuffer            = pBufferStart;
+    pBufferAligned = pBufferStart;
+    while ((((int)pBufferAligned) & 0x1f) != 0)
+    {
+        pBufferAligned++;  
+    }
+
+    VPP_DPRINT ("VPP::Inside the AllocateBuffer pBuffer =%p\n",pBufferHdr);
+    VPP_DPRINT ("VPP:: Inside the AllocateBuffer   pBuffer->pBuffer =%p\n" ,  pBufferHdr->pBuffer);
+    VPP_DPRINT ("VPP::Inside the AllocateBuffer --3  pBuffer =%p\n",pBufferHdr);
+
+    pBufferAligned            = ((OMX_U8*)pBufferAligned) +128;
+    pBufferHdr->pBuffer            = pBufferAligned;
     pComponentPrivate->sCompPorts[nPortIndex].pVPPBufHeader[nCount].pBufferStart = pBufferStart;
     pComponentPrivate->sCompPorts[nPortIndex].nBufferCount++;
 
@@ -658,9 +668,15 @@ OMX_ERRORTYPE OMX_ComponentInit (OMX_HANDLETYPE hComp)
     pComponentPrivate = (VPP_COMPONENT_PRIVATE *)pHandle->pComponentPrivate;
     
     /*Allcocating FrameStatus*/
-    OMX_MALLOC_SIZE_DSPALIGN(pComponentPrivate->pIpFrameStatus, sizeof(GPPToVPPInputFrameStatus), OMX_U8);
-    OMX_MALLOC_SIZE_DSPALIGN(pComponentPrivate->pOpYUVFrameStatus, sizeof(GPPToVPPOutputFrameStatus), OMX_U8);
-    OMX_MALLOC_SIZE_DSPALIGN(pComponentPrivate->pOpRGBFrameStatus, sizeof(GPPToVPPOutputFrameStatus), OMX_U8);
+    OMX_MALLOC(pComponentPrivate->pIpFrameStatus, sizeof(GPPToVPPInputFrameStatus) + 256);
+    pTemp = ((OMX_U8*)(pComponentPrivate->pIpFrameStatus))+128;
+    pComponentPrivate->pIpFrameStatus =  (GPPToVPPInputFrameStatus *)pTemp;
+    OMX_MALLOC(pComponentPrivate->pOpYUVFrameStatus, sizeof(GPPToVPPOutputFrameStatus) + 256); 
+    pTemp = ((OMX_U8*)(pComponentPrivate->pOpYUVFrameStatus))+128;
+    pComponentPrivate->pOpYUVFrameStatus = (GPPToVPPOutputFrameStatus *)pTemp;
+    OMX_MALLOC(pComponentPrivate->pOpRGBFrameStatus, sizeof(GPPToVPPOutputFrameStatus) + 256); 
+    pTemp = ((OMX_U8*)(pComponentPrivate->pOpRGBFrameStatus))+128;
+    pComponentPrivate->pOpRGBFrameStatus = (GPPToVPPOutputFrameStatus *)pTemp;
 
 #ifdef KHRONOS_1_1
     strcpy((char *)pComponentPrivate->componentRole.cRole,"iv_renderer.yuv.overlay");

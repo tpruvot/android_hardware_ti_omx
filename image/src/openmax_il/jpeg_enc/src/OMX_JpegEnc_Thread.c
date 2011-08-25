@@ -62,7 +62,6 @@
 #include <sys/select.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <sys/prctl.h>
 #endif
 
 #include <dbapi.h>
@@ -100,9 +99,8 @@ void* OMX_JpegEnc_Thread (void* pThreadData)
     OMX_ERRORTYPE eError = OMX_ErrorNone;
     OMX_COMMANDTYPE eCmd;
     OMX_U32 nParam1;
-    sigset_t set;
+    sigset_t set; 	
 
-    prctl(PR_SET_NAME, (unsigned long) "OMX-JPGENC", 0, 0, 0);
 
     OMX_COMPONENTTYPE *pHandle = (OMX_COMPONENTTYPE *)pThreadData;
     JPEGENC_COMPONENT_PRIVATE *pComponentPrivate = (JPEGENC_COMPONENT_PRIVATE *)pHandle->pComponentPrivate;
@@ -152,6 +150,7 @@ void* OMX_JpegEnc_Thread (void* pThreadData)
                                                     OMX_EventError, OMX_ErrorInsufficientResources, OMX_TI_ErrorSevere,
                                                     "Error from COmponent Thread in select");
 	     eError = OMX_ErrorInsufficientResources;
+            break;
         } else {
             if ( (FD_ISSET (pComponentPrivate->filled_inpBuf_Q[0], &rfds))
                  && (pComponentPrivate->nCurState != OMX_StatePause) ) {
@@ -225,9 +224,6 @@ void* OMX_JpegEnc_Thread (void* pThreadData)
                         }
                     } 
                     
-                else if ( eCmd == OMX_CustomCommandFatalError ) {
-                        Jpeg_Enc_FatalErrorRecover(pComponentPrivate);
-                    }
                 else if ( eCmd == OMX_CustomCommandStopThread ) {
                     /*eError = 10;*/
                     goto EXIT;

@@ -50,7 +50,11 @@
 ****************************************************************/
 /* ----- system and platform files ----------------------------*/
 
-
+#ifdef UNDER_CE
+#include <windows.h>
+#include <oaf_osal.h>
+#include <omx_core.h>
+#else
 #include <dbapi.h>
 #include <unistd.h>
 #include <sys/time.h>
@@ -63,6 +67,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <signal.h>
+#endif
 /*-------program files ----------------------------------------*/
 #include "OMX_G726Enc_Utils.h"
 

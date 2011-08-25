@@ -143,31 +143,16 @@ OMX_ERRORTYPE omxFreeBuffers            (OMX_HANDLETYPE *pHandle, int nBuffs, OM
 
 void          printTestCaseInfo         (int, char *);
 void          getString_OMX_State       (char *ptrString, OMX_STATETYPE state);
-#ifndef USE_BUFFER
-int FreeAllResources( OMX_HANDLETYPE pHandle,
-                      OMX_BUFFERHEADERTYPE* pBufferIn,
-                      OMX_BUFFERHEADERTYPE* pBufferOut,
-                      int NIB, int NOB,
-                      FILE* fIn, FILE* fOut);
-#else
-int  FreeAllResources(OMX_HANDLETYPE pHandle,
-                         OMX_U8* UseInpBuf[],
-                         OMX_U8* UseOutBuf[],
-                         int NIB, int NOB,
-                         FILE* fIn, FILE* fOut);
-
-#endif
 
 /* Global variables */
 int sendlastbuffer   = 0;
-OMX_STATETYPE gState = OMX_StateInvalid;
+OMX_STATETYPE gState = OMX_StateExecuting;
 
 int IpBuf_Pipe[2] = {0};
 int OpBuf_Pipe[2] = {0};
 int Event_Pipe[2] = {0};
 
 int preempted = 0;
-static OMX_BOOL bInvalidState;
 
 /* ================================================================================= * */
 /**
@@ -222,7 +207,6 @@ int main(int argc, char* argv[])
 #ifdef OMX_GETTIME
     OMX_ListCreate(&pListHead);
 #endif  
-    bInvalidState = OMX_FALSE;
     int iSampRate = 0;
     boolean bFlag = validateArguments (argc, argv, &iSampRate, fname, &tcID, &gDasfMode, &nIpBuffs, &nIpBufSize, &nOpBuffs, &nOpBufSize);    
     if (bFlag == FALSE) {
@@ -446,16 +430,11 @@ int main(int argc, char* argv[])
                 getString_OMX_State (strState, gState);
 #endif               
                 
-                if ((error == OMX_ErrorNone) && (gState != OMX_StateIdle) && (gState != OMX_StateInvalid)) {
+                if ((error == OMX_ErrorNone) && (gState != OMX_StateIdle)) {
                     error = testCases (pHandle, &rfds, tcID, fIn, fOut, &frmCnt, &totalFilled, &tv, gDasfMode, nIpBuffs, pInputBufferHeader, nOpBuffs, pOutputBufferHeader);
                     if (error != OMX_ErrorNone) {
                         printf ("<<<<<<<<<<<<<< testCases fault exit >>>>>>>>>>>>>>\n");
-                        goto EXIT;
-                    }
-                    error = OMX_GetState(*pHandle, &gState);
-                    if(error != OMX_ErrorNone) {
-                        APP_DPRINT("%d:: GetState has returned error %X\n",__LINE__, error);
-                        goto EXIT;
+                        exit (1);
                     }
                 } else if (preempted) {
                     sched_yield ();
@@ -494,13 +473,13 @@ int main(int argc, char* argv[])
         error = omxFreeBuffers (pHandle, nIpBuffs, pInputBufferHeader, "Input");
         if((error != OMX_ErrorNone)) {
             APP_DPRINT ("%d:: Error in Free Input Buffers function\n",__LINE__);
-            goto EXIT;
+            exit (1);
         }
         if(gDasfMode == 0) {
             error = omxFreeBuffers (pHandle, nOpBuffs, pOutputBufferHeader, "Output");
             if((error != OMX_ErrorNone)) {
                 APP_DPRINT ("%d:: Error in Free Output Buffers function\n",__LINE__);
-                goto EXIT;
+                exit (1);
             }
         }
         error = WaitForState(pHandle, OMX_StateLoaded);                             
@@ -509,7 +488,7 @@ int main(int argc, char* argv[])
 #endif
         if(error != OMX_ErrorNone) {
             APP_DPRINT ("%d:: Error from SendCommand-Idle State function\n",__LINE__);
-            goto EXIT;
+            exit (1);
         }
 
 #ifdef WAITFORRESOURCES
@@ -537,7 +516,7 @@ int main(int argc, char* argv[])
         error = TIOMX_FreeHandle(*pHandle);
         if( (error != OMX_ErrorNone)) {
             APP_DPRINT ("%d:: Error in Free Handle function\n",__LINE__);
-            goto EXIT;
+            exit (1);
         } 
         APP_DPRINT ("%d:: Free Handle returned Successfully \n\n\n\n",__LINE__);
         if (pHandle) {
@@ -554,25 +533,6 @@ int main(int argc, char* argv[])
         sendlastbuffer = 0;
     }
 
- EXIT:
-
-if (bInvalidState == OMX_TRUE) {
-#ifndef USE_BUFFER
-    error = FreeAllResources(pHandle,
-                             pInputBufferHeader,
-                             pOutputBufferHeader,
-                             nIpBuffs,
-                             nOpBuffs,
-                             fIn, fOut);
-#else
-    error = FreeAllResources(pHandle,
-                                pInputBufferHeader,
-                                pOutputBufferHeader,
-                                nIpBuffs,
-                                nOpBuffs,
-                                fIn, fOut);
-#endif
-}
     error = TIOMX_Deinit();
     if( (error != OMX_ErrorNone)) {
         APP_DPRINT("APP: Error in Deinit Core function\n");
@@ -697,10 +657,6 @@ static OMX_ERRORTYPE WaitForState(OMX_HANDLETYPE* pHandle, OMX_STATETYPE Desired
     OMX_STATETYPE CurState = OMX_StateInvalid;
     OMX_ERRORTYPE error = OMX_ErrorNone;
     int nCnt = 0;
-    if (bInvalidState == OMX_TRUE){
-        error = OMX_ErrorInvalidState;
-        return error;
-    }
 
     error = OMX_GetState(*pHandle, &CurState);
     while( (error == OMX_ErrorNone) && (CurState != DesiredState)) {
@@ -788,9 +744,8 @@ OMX_ERRORTYPE EventHandler(OMX_HANDLETYPE hComponent,OMX_PTR pAppData,OMX_EVENTT
 
             writeValue = 0;  
             write(Event_Pipe[1], &writeValue, sizeof(OMX_U8));
-        } else if (nData1 == OMX_ErrorInvalidState && bInvalidState == OMX_FALSE) {
-            bInvalidState = OMX_TRUE;
-            APP_DPRINT ("Error: Invalid State! \n");
+        } else {
+            APP_DPRINT ("------> \tnothing to process on OMX_EnentError <--------\n");                
         }
         break;
     case OMX_EventBufferFlag:
@@ -1424,11 +1379,6 @@ OMX_ERRORTYPE testCases (OMX_HANDLETYPE *pHandle, fd_set *rfds, int tcID, FILE *
                     fprintf (stderr,"Error from SendCommand-Idle(Stop) State function\n");
                     return (error);
                 }
-                error = WaitForState(pHandle, OMX_StateIdle);
-                    if(error != OMX_ErrorNone) {
-                        fprintf(stderr, "Error:  hPcmDecoder->WaitForState reports an error %X\n", error);
-                        return (error);
-                    }
                 if(tcID == 4) {
                     error = testCase_2_4 (pHandle, gDasfMode, fIn, fOut, nIpBuffs, pInputBufferHeader);
                     if(error != OMX_ErrorNone) {
@@ -1908,101 +1858,3 @@ void getString_OMX_State (char *ptrString, OMX_STATETYPE state)
     }
     return;
 }
-/*=================================================================
-    Freeing All allocated resources
-==================================================================*/
-#ifndef USE_BUFFER
-int FreeAllResources( OMX_HANDLETYPE pHandle,
-                      OMX_BUFFERHEADERTYPE* pBufferIn,
-                      OMX_BUFFERHEADERTYPE* pBufferOut,
-                      int NIB, int NOB,
-FILE* fIn, FILE* fOut) {
-    printf("%d::Freeing all resources by state invalid \n", __LINE__);
-    OMX_ERRORTYPE eError = OMX_ErrorNone;
-
-        eError = omxFreeBuffers (pHandle, NIB, pBufferIn, "Input");
-        if(eError != OMX_ErrorNone) {
-            APP_DPRINT ("%d:: Error in Free Input Buffers function\n",__LINE__);
-        }
-
-        eError = omxFreeBuffers (pHandle, NOB, pBufferOut, "Output");
-        if(eError != OMX_ErrorNone) {
-            APP_DPRINT ("%d:: Error in Free Output Buffers function\n",__LINE__);
-        }
-
-    if (pHandle) {
-        free(pHandle);
-    }
-
-    eError = close (IpBuf_Pipe[0]);
-    eError = close (IpBuf_Pipe[1]);
-    eError = close (OpBuf_Pipe[0]);
-    eError = close (OpBuf_Pipe[1]);
-    eError = close (Event_Pipe[0]);
-    eError = close (Event_Pipe[1]);
-
-    if (fOut != NULL) {
-        fclose(fOut);
-        fOut = NULL;
-    }
-
-    if (fIn != NULL) {
-        fclose(fIn);
-        fIn = NULL;
-    }
-
-    TIOMX_FreeHandle(pHandle);
-
-    return eError;
-}
-
-/*=================================================================
-    Freeing the resources with USE_BUFFER define
-==================================================================*/
-#else
-int FreeAllResources(OMX_HANDLETYPE pHandle,
-                        OMX_U8* UseInpBuf[],
-                        OMX_U8* UseOutBuf[],
-                        int NIB, int NOB,
-FILE* fIn, FILE* fOut) {
-    OMX_ERRORTYPE eError = OMX_ErrorNone;
-    OMX_U16 i;
-    APP_DPRINT("%d::Freeing all resources by state invalid \n", __LINE__);
-    /* free the UseBuffers */
-
-    for (i = 0; i < NIB; i++) {
-        free(UseInpBuf[i]);
-    }
-
-    for (i = 0; i < NOB; i++) {
-        free(UseOutBuf[i]);
-    }
-
-    if (pHandle) {
-        free(pHandle);
-    }
-
-    eError = close (IpBuf_Pipe[0]);
-    eError = close (IpBuf_Pipe[1]);
-    eError = close (OpBuf_Pipe[0]);
-    eError = close (OpBuf_Pipe[1]);
-    eError = close (Event_Pipe[0]);
-    eError = close (Event_Pipe[1]);
-
-    if (fOut != NULL) {
-        fclose(fOut);
-        fOut = NULL;
-    }
-
-    if (fIn != NULL) {
-        fclose(fIn);
-        fIn = NULL;
-    }
-
-    TIOMX_FreeHandle(pHandle);
-
-    return eError;
-}
-
-#endif
-

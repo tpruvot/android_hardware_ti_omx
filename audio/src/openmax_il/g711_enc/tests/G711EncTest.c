@@ -239,12 +239,6 @@ static OMX_ERRORTYPE WaitForState(OMX_HANDLETYPE pHandle,
     OMX_STATETYPE CurState = OMX_StateInvalid;
     OMX_ERRORTYPE eError = OMX_ErrorNone;
 
-    if (bInvalidState == OMX_TRUE)
-    {
-        APP_DPRINT("%d [TEST APP] WaitForState called on invalid state\n",__LINE__);
-        return OMX_StateInvalid;
-    }
-
     eError = OMX_GetState(pHandle, &CurState);
     if(eError != OMX_ErrorNone) {
         APP_DPRINT("%d [TEST APP] Error returned from GetState\n",__LINE__);
@@ -303,15 +297,7 @@ OMX_ERRORTYPE EventHandler(OMX_HANDLETYPE hComponent,
         printf( "%d [TEST APP] Enter to OMX_EventError = %d\n", __LINE__,eEvent);
           
         if (nData1 == OMX_ErrorInvalidState) {
-            printf( "%d [TEST APP] Fault detected!\n", __LINE__);
             bInvalidState = OMX_TRUE;
-            if (WaitForState_flag)
-            {
-                WaitForState_flag = 0;
-                pthread_mutex_lock(&WaitForState_mutex);
-                pthread_cond_signal(&WaitForState_threshold);
-                pthread_mutex_unlock(&WaitForState_mutex);
-            }
         }
         else if(nData1 == OMX_ErrorResourcesPreempted) {
             writeValue = 0;  
@@ -421,7 +407,6 @@ int main(int argc, char* argv[])
     OMX_AUDIO_PARAM_PCMMODETYPE *pG711Param = NULL;
     OMX_BUFFERHEADERTYPE* pInputBufferHeader[G711ENC_MAX_NUM_OF_BUFS] = {NULL};
     OMX_BUFFERHEADERTYPE* pOutputBufferHeader[G711ENC_MAX_NUM_OF_BUFS] = {NULL};
-    OMX_COMPONENTTYPE* pComponent;
 
     G711ENC_FTYPES *g711eframeinfo =  malloc(sizeof(G711ENC_FTYPES));
 
@@ -572,10 +557,6 @@ VAU NUM] [NMU Mode] [LP Order]\n");
             APP_DPRINT("Error in Get Handle function\n");
             goto EXIT;
         }
-
-        // Getting the Component handle;
-        pComponent = (OMX_COMPONENTTYPE *)pHandle;
-
         APP_DPRINT("%d [TEST APP] Got Phandle =  %p \n",__LINE__,pHandle);
     
         OMX_G711ENC_MALLOC_STRUCT(audioinfo, AUDIO_INFO);
@@ -1275,13 +1256,6 @@ VAU NUM] [NMU Mode] [LP Order]\n");
                       APP_DPRINT("%d [TEST APP] Shutting down ---------- \n",__LINE__);
                     }
                 }
-
-                eError = pComponent->GetState(pHandle, &gState);
-                if(eError != OMX_ErrorNone) {
-                    APP_DPRINT("%d:: Warning:  hG711Encoder->GetState has returned status %X\n",__LINE__, eError);
-                    goto EXIT;
-                }
-
             } /* While Loop Ending Here */
 
             APP_DPRINT("%d [TEST APP] The current state of the component = %d \n",__LINE__,gState);
@@ -1303,24 +1277,21 @@ VAU NUM] [NMU Mode] [LP Order]\n");
         } /*Test Case 4 & 5 Inner for loop ends here  */
 
 
-        if (bInvalidState == OMX_FALSE)
-        {
-            APP_DPRINT ("%d [TEST APP] Sending the OMX_CommandPortDisable Command\n",__LINE__);
+        APP_DPRINT ("%d [TEST APP] Sending the OMX_CommandPortDisable Command\n",__LINE__);
 #ifdef OMX_GETTIME
-            GT_START();
+        GT_START();
 #endif
-            eError = OMX_SendCommand(pHandle, OMX_CommandPortDisable, -1, NULL);
-            if(eError != OMX_ErrorNone) {
-                APP_DPRINT("%d:: Error from SendCommand OMX_CommandPortDisable\n",__LINE__);
-                goto EXIT;
-            }
+        eError = OMX_SendCommand(pHandle, OMX_CommandPortDisable, -1, NULL);
+        if(eError != OMX_ErrorNone) {
+            APP_DPRINT("%d:: Error from SendCommand OMX_CommandPortDisable\n",__LINE__);
+            goto EXIT;
+        }
 
-            APP_DPRINT ("%d [TEST APP] Sending the OMX_StateLoaded Command\n",__LINE__);
-            eError = OMX_SendCommand(pHandle,OMX_CommandStateSet, OMX_StateLoaded, NULL);
-            if(eError != OMX_ErrorNone) {
-                APP_DPRINT("%d:: Error from SendCommand-StateLoaded State function\n",__LINE__);
-                goto EXIT;
-            }
+        APP_DPRINT ("%d [TEST APP] Sending the OMX_StateLoaded Command\n",__LINE__);
+        eError = OMX_SendCommand(pHandle,OMX_CommandStateSet, OMX_StateLoaded, NULL);
+        if(eError != OMX_ErrorNone) {
+            APP_DPRINT("%d:: Error from SendCommand-Idle State function\n",__LINE__);
+            goto EXIT;
         }
 
         /* free the Allocate and Use Buffers */
@@ -1478,12 +1449,6 @@ OMX_ERRORTYPE send_input_buffer (OMX_HANDLETYPE pHandle,
                                  FILE *fIn)
 {
     OMX_ERRORTYPE error = OMX_ErrorNone;
-
-    if (bInvalidState)
-    {
-        APP_DPRINT( "%d send_input_buffer called on invalid state\n", __LINE__);
-        return OMX_StateInvalid;
-    }
 
     pBuffer->nFilledLen = fread(pBuffer->pBuffer, 1, pBuffer->nAllocLen, fIn);
 

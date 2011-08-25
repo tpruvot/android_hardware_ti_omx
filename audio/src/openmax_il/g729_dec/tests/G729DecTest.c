@@ -167,7 +167,6 @@ OMX_S16 packetsPerBuffer = 0;
 OMX_S16 EOFevent = 0;
 OMX_BOOL bExitOnError = OMX_FALSE;
 int command = 0;
-static OMX_BOOL bInvalidState;
 
 #ifdef DSP_RENDERING_ON
 AM_COMMANDDATATYPE cmd_data;
@@ -256,12 +255,6 @@ static OMX_ERRORTYPE WaitForState(OMX_HANDLETYPE* pHandle,
     OMX_ERRORTYPE eError = OMX_ErrorNone;
     OMX_S16 nCnt = 0;
     OMX_COMPONENTTYPE *pComponent = (OMX_COMPONENTTYPE *)pHandle;
-
-    if (bInvalidState == OMX_TRUE){
-        eError = OMX_ErrorInvalidState;
-        return eError;
-    }
-
     eError = pComponent->GetState(pHandle, &CurState);
 
     while((eError == OMX_ErrorNone) && (CurState != DesiredState) && (eError == OMX_ErrorNone) ) {
@@ -324,9 +317,7 @@ OMX_ERRORTYPE EventHandler(
             APP_DPRINT("EventHandler: ERROR: Data corrupt ERROR\n");
             /* Corrupted input buffer parameters, component must be reseted or stopped */
         }
-        if(nData1 == OMX_ErrorInvalidState) {
-            bInvalidState = OMX_TRUE;
-        }
+        break;
         break;
     case OMX_EventMax:
         break;
@@ -425,7 +416,6 @@ int main(int argc, char* argv[])
     mtrace();
 #endif
 
-    bInvalidState = OMX_FALSE;
     bExitOnError = OMX_FALSE; 
     OMX_G729APP_MALLOC_STRUCT(audioinfo, TI_OMX_DSP_DEFINITION);
     OMX_G729APP_INIT_STRUCT(audioinfo, TI_OMX_DSP_DEFINITION);
@@ -1077,7 +1067,7 @@ int main(int argc, char* argv[])
             frmCount = 0;
             OutBufCount = 0;
             InBufCount = 0;
-            while( (error == OMX_ErrorNone) && ((state != OMX_StateIdle) || (retval>0)) && (state != OMX_StateInvalid) ) {
+            while( (error == OMX_ErrorNone) && ((state != OMX_StateIdle) || (retval>0))  ) {
                 FD_ZERO(&rfds);
                 FD_SET(IpBuf_Pipe[0], &rfds);
                 FD_SET(OpBuf_Pipe[0], &rfds);
@@ -1330,7 +1320,7 @@ int main(int argc, char* argv[])
 
  EXIT:
 
-    if (bExitOnError || bInvalidState){
+    if (bExitOnError){
 #ifdef USE_BUFFER    
         FreeResources(pG729Param, pPcmParam, pCompPrivateStruct, 
                       pCompPrivateStructMute, pCompPrivateStructVolume, 
