@@ -354,7 +354,7 @@ OMX_ERRORTYPE OMX_ComponentInit (OMX_HANDLETYPE hComp)
     pComponentPrivate->bNoIdleOnStop= OMX_FALSE;
     pComponentPrivate->bDspStoppedWhileExecuting = OMX_FALSE;
     pComponentPrivate->sOutPortFormat.eEncoding = OMX_AUDIO_CodingPCM;
-
+    pComponentPrivate->stopAckError = OMX_FALSE;
 
     /* initialize role name */
     strcpy((char*)pComponentPrivate->componentRole.cRole, MP3_DEC_ROLE);
@@ -379,6 +379,9 @@ OMX_ERRORTYPE OMX_ComponentInit (OMX_HANDLETYPE hComp)
     pthread_mutex_init(&pComponentPrivate->InIdle_mutex, NULL);
     pthread_cond_init (&pComponentPrivate->InIdle_threshold, NULL);
     pComponentPrivate->InIdle_goingtoloaded = 0;
+
+    pthread_mutex_init(&bufferReturned_mutex, NULL);
+    pthread_mutex_init(&bufferReturned_condition, NULL);
 #else
     OMX_CreateEvent(&(pComponentPrivate->AlloBuf_event));
     pComponentPrivate->AlloBuf_waitingsignal = 0;
@@ -1561,7 +1564,7 @@ static OMX_ERRORTYPE EmptyThisBuffer (OMX_HANDLETYPE pComponent,
     if (ret == -1) {
         MP3D_OMX_ERROR_EXIT(eError,OMX_ErrorHardware,"write failed: OMX_ErrorHardware");
     }else{
-        pComponentPrivate->nEmptyThisBufferCount++;
+        SignalIfAllBuffersAreReturned(pComponentPrivate, &pComponentPrivate->nEmptyThisBufferCount);
     }
     
  EXIT:
@@ -1687,7 +1690,7 @@ static OMX_ERRORTYPE FillThisBuffer (OMX_HANDLETYPE pComponent,
     if (nRet == -1) {
         MP3D_OMX_ERROR_EXIT(eError,OMX_ErrorHardware,"write failed: OMX_ErrorHardware");
     }else{
-        pComponentPrivate->nFillThisBufferCount++;
+        SignalIfAllBuffersAreReturned(pComponentPrivate, &pComponentPrivate->nFillThisBufferCount);
     }
 
  EXIT:
@@ -1720,7 +1723,7 @@ static OMX_ERRORTYPE ComponentDeInit(OMX_HANDLETYPE pHandle)
     OMX_ERRORTYPE eError1 = OMX_ErrorNone;
     OMX_COMPONENTTYPE *pComponent = (OMX_COMPONENTTYPE *)pHandle;
     MP3DEC_COMPONENT_PRIVATE *pComponentPrivate = NULL;
-    int k=0, k2 = 0;
+    int k=0, k2 = 0, i=0;
     struct OMX_TI_Debug dbg = {0};
 
     MP3D_OMX_CONF_CHECK_CMD(pComponent,1,1)
@@ -1760,6 +1763,37 @@ static OMX_ERRORTYPE ComponentDeInit(OMX_HANDLETYPE pHandle)
             eError = OMX_ErrorHardware;
         }
     } 
+
+    pHandle = (OMX_COMPONENTTYPE *) pComponentPrivate->pHandle;
+    for (i=0; i < MP3D_MAX_NUM_OF_BUFS; i++) {
+        if (pComponentPrivate->pInputBufferList->pBufHdr[i] != NULL){
+            OMX_BUFFERHEADERTYPE* pBuffHead = NULL;
+            pBuffHead = pComponentPrivate->pInputBufferList->pBufHdr[i];
+            if(pBuffHead != NULL){
+               if(pComponentPrivate->pInputBufferList->bufferOwner[i] == 1){
+	           OMX_MEMFREE_STRUCT_DSPALIGN(pBuffHead->pBuffer,OMX_U8);
+                }
+                free(pBuffHead);
+                pBuffHead = NULL;
+                pComponentPrivate->pInputBufferList->pBufHdr[i] = NULL;
+            }
+        }
+    }
+    for (i=0; i < MP3D_MAX_NUM_OF_BUFS; i++) {
+         if (pComponentPrivate->pOutputBufferList->pBufHdr[i] != NULL){
+             OMX_BUFFERHEADERTYPE* pBuffHead = NULL;
+             pBuffHead = pComponentPrivate->pOutputBufferList->pBufHdr[i];
+             if(pBuffHead != NULL){
+                 if(pComponentPrivate->pOutputBufferList->bufferOwner[i] == 1){
+                     OMX_MEMFREE_STRUCT_DSPALIGN(pBuffHead->pBuffer,OMX_U8);
+                 }
+                 free(pBuffHead);
+                 pBuffHead = NULL;
+                 pComponentPrivate->pOutputBufferList->pBufHdr[i] = NULL;
+              }
+         }
+     }
+
     eError1 = MP3DEC_FreeCompResources(pHandle);
     if (OMX_ErrorNone != eError1) {
         if (OMX_ErrorNone == eError) {
@@ -1960,20 +1994,20 @@ static OMX_ERRORTYPE AllocateBuffer (OMX_IN OMX_HANDLETYPE hComponent,
     }
 
     if((pComponentPrivate->pPortDef[MP3D_OUTPUT_PORT]->bPopulated == pComponentPrivate->pPortDef[MP3D_OUTPUT_PORT]->bEnabled)&&
-       (pComponentPrivate->pPortDef[MP3D_INPUT_PORT]->bPopulated == pComponentPrivate->pPortDef[MP3D_INPUT_PORT]->bEnabled) &&
-       (pComponentPrivate->InLoaded_readytoidle))
+       (pComponentPrivate->pPortDef[MP3D_INPUT_PORT]->bPopulated == pComponentPrivate->pPortDef[MP3D_INPUT_PORT]->bEnabled)){
+        pthread_mutex_lock(&pComponentPrivate->InLoaded_mutex);
+        if (pComponentPrivate->InLoaded_readytoidle)
         {
             pComponentPrivate->InLoaded_readytoidle = 0;                  
 #ifndef UNDER_CE
 
-            pthread_mutex_lock(&pComponentPrivate->InLoaded_mutex);
             pthread_cond_signal(&pComponentPrivate->InLoaded_threshold);
-            pthread_mutex_unlock(&pComponentPrivate->InLoaded_mutex);
 #else
             OMX_SignalEvent(&(pComponentPrivate->InLoaded_event));
 #endif    
         }
-
+        pthread_mutex_unlock(&pComponentPrivate->InLoaded_mutex);
+    }
     pBufferHeader->pAppPrivate = pAppPrivate;
     pBufferHeader->pPlatformPrivate = pComponentPrivate;
     pBufferHeader->nAllocLen = nSizeBytes;
@@ -2177,13 +2211,15 @@ static OMX_ERRORTYPE FreeBuffer(
         eError = OMX_ErrorBadParameter;
     }
 
+LOGE("pComponentPrivate->pInputBufferList->numBuffers = %ld pComponentPrivate->pOutputBufferList->numBuffers = %ld pComponentPrivate->InIdle_goingtoloaded=%d\n", pComponentPrivate->pInputBufferList->numBuffers, pComponentPrivate->pOutputBufferList->numBuffers, pComponentPrivate->InIdle_goingtoloaded);
     if ((!pComponentPrivate->pInputBufferList->numBuffers &&
-         !pComponentPrivate->pOutputBufferList->numBuffers) &&
-        pComponentPrivate->InIdle_goingtoloaded){
-        pComponentPrivate->InIdle_goingtoloaded = 0;                  
+         !pComponentPrivate->pOutputBufferList->numBuffers)){
 
         pthread_mutex_lock(&pComponentPrivate->InIdle_mutex);
-        pthread_cond_signal(&pComponentPrivate->InIdle_threshold);
+        if (pComponentPrivate->InIdle_goingtoloaded){
+           pComponentPrivate->InIdle_goingtoloaded = 0;
+           pthread_cond_signal(&pComponentPrivate->InIdle_threshold);
+        }
         pthread_mutex_unlock(&pComponentPrivate->InIdle_mutex);
 
     }
@@ -2326,19 +2362,20 @@ static OMX_ERRORTYPE UseBuffer (
     }
 
     if((pComponentPrivate->pPortDef[MP3D_OUTPUT_PORT]->bPopulated == pComponentPrivate->pPortDef[MP3D_OUTPUT_PORT]->bEnabled)&&
-       (pComponentPrivate->pPortDef[MP3D_INPUT_PORT]->bPopulated == pComponentPrivate->pPortDef[MP3D_INPUT_PORT]->bEnabled) &&
-       (pComponentPrivate->InLoaded_readytoidle))
+       (pComponentPrivate->pPortDef[MP3D_INPUT_PORT]->bPopulated == pComponentPrivate->pPortDef[MP3D_INPUT_PORT]->bEnabled)){
+        pthread_mutex_lock(&pComponentPrivate->InLoaded_mutex);
+        if (pComponentPrivate->InLoaded_readytoidle)
         {
             pComponentPrivate->InLoaded_readytoidle = 0;                  
 #ifndef UNDER_CE
-            pthread_mutex_lock(&pComponentPrivate->InLoaded_mutex);
             pthread_cond_signal(&pComponentPrivate->InLoaded_threshold);
-            pthread_mutex_unlock(&pComponentPrivate->InLoaded_mutex);
 #else
             OMX_SignalEvent(&(pComponentPrivate->InLoaded_event));
 #endif    
 
         }
+        pthread_mutex_unlock(&pComponentPrivate->InLoaded_mutex);
+    }
 
     pBufferHeader->pAppPrivate = pAppPrivate;
     pBufferHeader->pPlatformPrivate = pComponentPrivate;

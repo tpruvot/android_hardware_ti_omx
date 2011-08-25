@@ -150,14 +150,10 @@ void* AACENC_ComponentThread (void* pThreadData)
              }
              OMX_PRINT2(pComponentPrivate->dbg, "%d :: Component Time Out !!!!! \n",__LINE__);
         } 
-        else if(status == -1) 
+        else if(status == -1)
         {
             OMX_ERROR2(pComponentPrivate->dbg, "%d :: Error in Select\n", __LINE__);
-            pComponentPrivate->cbInfo.EventHandler (pHandle, pHandle->pApplicationPrivate, 
-                                                    OMX_EventError,
-                                                    OMX_ErrorInsufficientResources,
-                                                    OMX_TI_ErrorSevere,
-                                                    "Error from Component Thread in select");
+            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->curState);
             eError = OMX_ErrorInsufficientResources;
         }
 
@@ -212,15 +208,12 @@ void* AACENC_ComponentThread (void* pThreadData)
                 PERF_Boundary(pComponentPrivate->pPERFcomp,PERF_BoundaryComplete | PERF_BoundaryCleanup);
 #endif  
 
+
                 if(pComponentPrivate->bPreempted==0){
-                    if (RemoveStateTransition(pComponentPrivate, OMX_TRUE) != OMX_ErrorNone) {
-                        return OMX_ErrorUndefined;
-                    }
-                    pComponentPrivate->cbInfo.EventHandler(pHandle,
+                    pComponentPrivate->cbInfo.EventHandler(pHandle, 
                                                            pHandle->pApplicationPrivate,
                                                            OMX_EventCmdComplete,
-                                                           OMX_CommandStateSet,
-                                                           pComponentPrivate->curState,
+                                                           OMX_ErrorNone,pComponentPrivate->curState, 
                                                            NULL);
 
                 }
@@ -234,11 +227,10 @@ void* AACENC_ComponentThread (void* pThreadData)
                     pComponentPrivate->bPreempted = 0;
                 }
 
-                pComponentPrivate->bLoadedCommandPending = OMX_FALSE;
-                goto EXIT;
+            pComponentPrivate->bLoadedCommandPending = OMX_FALSE;
             }
 
-        }
+        }  
     }
 
 EXIT:

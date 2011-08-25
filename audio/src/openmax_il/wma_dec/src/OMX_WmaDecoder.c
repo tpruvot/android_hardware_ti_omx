@@ -317,7 +317,9 @@ OMX_ERRORTYPE OMX_ComponentInit (OMX_HANDLETYPE hComp)
     pComponentPrivate->bEnableCommandParam = 0;
     
     pComponentPrivate->nUnhandledFillThisBuffers=0;
+    pComponentPrivate->nHandledFillThisBuffers=0;
     pComponentPrivate->nUnhandledEmptyThisBuffers = 0;
+    pComponentPrivate->nHandledEmptyThisBuffers = 0;
     pComponentPrivate->SendAfterEOS = 0;
     
     pComponentPrivate->bFlushOutputPortCommandPending = OMX_FALSE;
@@ -1400,17 +1402,17 @@ static OMX_ERRORTYPE EmptyThisBuffer (OMX_HANDLETYPE pComponent,
     pComponentPrivate->pMarkData = pBuffer->pMarkData;
     pComponentPrivate->hMarkTargetComponent = pBuffer->hMarkTargetComponent;
 
-    pComponentPrivate->nUnhandledEmptyThisBuffers++;
- 
     ret = write (pComponentPrivate->dataPipe[1], &pBuffer, sizeof(OMX_BUFFERHEADERTYPE*));
 
     if (ret == -1) {
         OMX_TRACE4(pComponentPrivate->dbg, "%d :: Error in Writing to the Data pipe\n", __LINE__);
-        eError = OMX_ErrorHardware;
-        goto EXIT;
+        return OMX_ErrorHardware;
+    }
+    else {
+        pComponentPrivate->nUnhandledEmptyThisBuffers++;
+        pComponentPrivate->nEmptyThisBufferCount++;
     }
 
-    pComponentPrivate->nEmptyThisBufferCount++;
  EXIT:
     return eError;
 }   
@@ -1513,14 +1515,17 @@ static OMX_ERRORTYPE FillThisBuffer (OMX_HANDLETYPE pComponent,
         pBuffer->pMarkData = pComponentPrivate->pMarkData;
         pComponentPrivate->pMarkData = NULL;
     }
-    pComponentPrivate->nUnhandledFillThisBuffers++;
+
     nRet = write (pComponentPrivate->dataPipe[1], &pBuffer,
                   sizeof (OMX_BUFFERHEADERTYPE*));
+
     if (nRet == -1) {
         OMX_ERROR4(pComponentPrivate->dbg, "%d :: Error in Writing to the Data pipe\n", __LINE__);
-        eError = OMX_ErrorHardware;
-        goto EXIT;
+        return OMX_ErrorHardware;
     }    
+    else {
+        pComponentPrivate->nUnhandledFillThisBuffers++;
+    }
 
  EXIT:
     return eError;

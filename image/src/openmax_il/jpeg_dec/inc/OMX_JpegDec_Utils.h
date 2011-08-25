@@ -472,6 +472,8 @@ typedef struct JPEGDEC_COMPONENT_PRIVATE
     OMX_CUSTOM_IMAGE_DECODE_SECTION* pSectionDecode;
     OMX_CUSTOM_IMAGE_DECODE_SUBREGION* pSubRegionDecode;
     OMX_CUSTOM_RESOLUTION sMaxResolution;
+    OMX_BOOL errorSent;
+    OMX_U16 bExitCompThrd;
     struct OMX_TI_Debug dbg;
 } JPEGDEC_COMPONENT_PRIVATE;
 

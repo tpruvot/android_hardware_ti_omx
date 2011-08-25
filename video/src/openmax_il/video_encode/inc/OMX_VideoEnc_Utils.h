@@ -76,8 +76,8 @@
 #define VIDENC_MAX_NUM_OF_BUFFERS     10
 #define VIDENC_MAX_NUM_OF_IN_BUFFERS  10
 #define VIDENC_MAX_NUM_OF_OUT_BUFFERS 10
-#define VIDENC_NUM_OF_IN_BUFFERS  2
-#define VIDENC_NUM_OF_OUT_BUFFERS 8
+#define VIDENC_NUM_OF_IN_BUFFERS  10
+#define VIDENC_NUM_OF_OUT_BUFFERS 10
 
 #define VIDENC_NUM_OF_PORTS 2
 
@@ -110,8 +110,8 @@
 /*Select Timeout */
 #define  VIDENC_TIMEOUT_SEC 120;
 #define  VIDENC_TIMEOUT_USEC 0;
-#define WVGA_MAX_WIDTH 854
-#define WVGA_MAX_HEIGHT WVGA_MAX_WIDTH
+#define WVGA_MAX_WIDTH 864
+#define WVGA_MAX_HEIGHT 480
 
 /*
 * Definition of capabilities index and structure
@@ -171,6 +171,13 @@ do {                                                        \
     goto OMX_CONF_CMD_BAIL;                                 \
 } while(0)
 
+#define OMX_VIDENC_SET_ERROR(_eError, _eCode, _hComp)\
+do {                                                        \
+    _eError = _eCode;                                       \
+    OMX_ERROR5(_hComp->dbg, "*Fatal Error : %x\n", eError); \
+    OMX_VIDENC_HandleError(_hComp, _eError);                \
+} while(0)
+
 /*
  * Checking paramaters for non-NULL values.
  * The macro takes three parameters because inside the code the highest
@@ -194,10 +201,19 @@ do {                                                        \
 */
 #define OMX_CONF_CIRCULAR_BUFFER_INIT(_pPrivateData_)       \
 do {                                                        \
+    if(pthread_mutex_init(&(_pPrivateData_)->mutexCircularBuffer, NULL)) {    \
+        OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorInsufficientResources);\
+    }                                                       \
+    if(pthread_mutex_lock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                      \
     (_pPrivateData_)->sCircularBuffer.pHead = NULL;         \
     (_pPrivateData_)->sCircularBuffer.pTail = NULL;         \
     (_pPrivateData_)->sCircularBuffer.nElements = 0;        \
-        (_pPrivateData_)->sCircularBuffer.nFillElements = 0;\
+    (_pPrivateData_)->sCircularBuffer.nFillElements = 0;    \
+    if(pthread_mutex_unlock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                      \
 } while(0)
 
 /*
@@ -205,10 +221,16 @@ do {                                                        \
 *number of fill elements is set to zero. It should be put in the Idle->Execution
 *transition.
 */
-#define OMX_CONF_CIRCULAR_BUFFER_RESTART(_sCircular_)       \
+#define OMX_CONF_CIRCULAR_BUFFER_RESTART(_pPrivateData_, _sCircular_)\
 do {                                                        \
+    if(pthread_mutex_lock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                      \
     (_sCircular_).pTail = (_sCircular_).pHead;              \
     (_sCircular_).nFillElements = 0;                        \
+    if(pthread_mutex_unlock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                      \
 } while(0)
 
 /*
@@ -218,6 +240,9 @@ do {                                                        \
 */
 #define OMX_CONF_CIRCULAR_BUFFER_ADD_NODE(_pPrivateData_, _sCircular_)\
 do {                                                        \
+    if(pthread_mutex_lock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                       \
     if((_sCircular_).nElements < VIDENC_MAX_NUM_OF_BUFFERS) \
     {                                                       \
         OMX_U8 _i_ = 0;                                      \
@@ -239,6 +264,9 @@ do {                                                        \
             pTmp->pNext = (_sCircular_).pHead;              \
         }                                                   \
     }                                                       \
+    if(pthread_mutex_unlock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                      \
 } while(0)
 
 /*
@@ -249,6 +277,9 @@ do {                                                        \
 */
 #define OMX_CONF_CIRCULAR_BUFFER_MOVE_TAIL(_pBufHead_, _sCircular_, _pPrivateData_)\
 do {                                                        \
+    if(pthread_mutex_lock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                      \
     if((_pPrivateData_)->pMarkBuf){                        \
         (_sCircular_).pTail->pMarkData = (_pPrivateData_)->pMarkBuf->pMarkData;\
         (_sCircular_).pTail->hMarkTargetComponent = (_pPrivateData_)->pMarkBuf->hMarkTargetComponent;\
@@ -267,6 +298,9 @@ do {                                                        \
        ((_sCircular_).nFillElements != 0)){                 \
         OMX_TRACE2((_pPrivateData_)->dbg, "**Warning:Circular Buffer Full.\n"); \
     }                                                       \
+    if(pthread_mutex_unlock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                       \
 } while(0)
 
 /*
@@ -277,6 +311,9 @@ do {                                                        \
 */
 #define OMX_CONF_CIRCULAR_BUFFER_MOVE_HEAD(_pBufHead_, _sCircular_, _pPrivateData_) \
 do {                                                         \
+    if(pthread_mutex_lock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                      \
     (_pBufHead_)->pMarkData = (_sCircular_).pHead->pMarkData;\
     (_pBufHead_)->hMarkTargetComponent = (_sCircular_).pHead->hMarkTargetComponent;\
     (_pBufHead_)->nTickCount = (_sCircular_).pHead->nTickCount;\
@@ -288,6 +325,9 @@ do {                                                         \
        ((_sCircular_).nFillElements == 0)){                 \
         OMX_TRACE1((_pPrivateData_)->dbg, "**Note:Circular Buffer Empty.\n"); \
     }                                                       \
+    if(pthread_mutex_unlock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                      \
 } while(0)
 
 /*
@@ -297,6 +337,9 @@ do {                                                         \
 */
 #define OMX_CONF_CIRCULAR_BUFFER_DELETE_NODE(_pPrivateData_, _sCircular_)\
 do {                                                        \
+    if(pthread_mutex_lock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                      \
     OMX_CONF_CIRCULAR_BUFFER_NODE* pTmp1 = (_sCircular_).pHead;\
     OMX_CONF_CIRCULAR_BUFFER_NODE* pTmp2 = NULL;            \
     if(((_sCircular_).pHead != NULL) &&                     \
@@ -317,6 +360,9 @@ do {                                                        \
             (_sCircular_).pTail = NULL;                     \
         }                                                   \
     }                                                       \
+    if(pthread_mutex_unlock(&(_pPrivateData_)->mutexCircularBuffer)) {\
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);\
+    }                                                      \
 } while(0)
 
 /*
@@ -614,8 +660,6 @@ typedef struct VIDENC_COMPONENT_PRIVATE
     OMX_U32 nMIRRate;
     OMX_U8  ucUnrestrictedMV;
     OMX_BOOL bSentFirstSpsPps;
-    unsigned char *sps;
-    OMX_U32  spsLen;
 
     OMX_U32 nInBufferSize;
     OMX_U32 nOutBufferSize;
@@ -682,6 +726,8 @@ typedef struct VIDENC_COMPONENT_PRIVATE
     OMX_BOOL bPreempted;
     OMX_VIDEO_CODINGTYPE compressionFormats[3];
     OMX_COLOR_FORMATTYPE colorFormats[3];
+    OMX_BOOL errorSent;
+    OMX_U16 bExitCompThrd;
     struct OMX_TI_Debug dbg;
     PV_OMXComponentCapabilityFlagsType* pCapabilityFlags;
     /*Variables neded to manage the VOL header request*/
@@ -694,6 +740,7 @@ typedef struct VIDENC_COMPONENT_PRIVATE
     OMX_U32 nPendingStateChangeRequests;
     pthread_mutex_t mutexStateChangeRequest;
     pthread_cond_t StateChangeCondition;
+    pthread_mutex_t mutexCircularBuffer;
 
     /* Variable related to variabe frame rate settings */
     OMX_TICKS nLastUpdateTime;          /* Timstamp of last framerate update */

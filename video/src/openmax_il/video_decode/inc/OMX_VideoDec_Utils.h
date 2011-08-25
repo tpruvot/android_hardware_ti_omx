@@ -814,8 +814,7 @@ typedef union VIDDEC_WMV_RCV_header {
 
 typedef struct VIDDEC_SAVE_BUFFER{
     OMX_BOOL    bSaveFirstBuffer;
-    OMX_PTR     pFirstBufferSaved;
-    OMX_S32     nFilledLen;
+    OMX_BUFFERHEADERTYPE*    pBufferHdr;
 }VIDDEC_SAVE_BUFFER;
 
 #ifdef ANDROID 
@@ -1004,6 +1003,8 @@ typedef struct VIDDEC_COMPONENT_PRIVATE
     OMX_BOOL bConfigBufferCompleteAVC;
     OMX_PTR pInternalConfigBufferAVC;
     OMX_U32 nInternalConfigBufferFilledAVC;
+    OMX_BOOL errorSent;
+    OMX_U16 bExitCompThrd;
     struct OMX_TI_Debug dbg;
     /* track number of codec config data (CCD) units and sizes */
     OMX_U32 aCCDsize[MAX_CCD_CNT];

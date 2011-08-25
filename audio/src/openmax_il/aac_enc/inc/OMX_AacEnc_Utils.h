@@ -603,12 +603,15 @@ typedef struct AACENC_COMPONENT_PRIVATE
     
     PV_OMXComponentCapabilityFlagsType iPVCapabilityFlags;
 
+    OMX_BOOL errorSent;
+
     struct OMX_TI_Debug dbg;
 
     /* Reference count for pending state change requests */
     OMX_U32 nPendingStateChangeRequests;
     pthread_mutex_t mutexStateChangeRequest;
     pthread_cond_t StateChangeCondition;
+    OMX_TICKS TimeStamp;
 
 } AACENC_COMPONENT_PRIVATE;
 

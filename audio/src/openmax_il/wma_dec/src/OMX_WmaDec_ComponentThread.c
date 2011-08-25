@@ -145,17 +145,12 @@ OMX_PRDSP2(pComponentPrivate->dbg, "PERF%d :: OMX_WmaDec_ComponentThread.c\n",__
                 }
             }
             OMX_PRDSP2(pComponentPrivate->dbg, "%d :: Component Time Out !!!!!!!!!!!! \n",__LINE__);
-        } 
+        }
         else if (-1 == status) {
             OMX_ERROR4(pComponentPrivate->dbg, "%d :: Error in Select\n", __LINE__);
-            pComponentPrivate->cbInfo.EventHandler ( pHandle,
-                                                     pHandle->pApplicationPrivate,
-                                                     OMX_EventError,
-                                                     OMX_ErrorInsufficientResources,
-                                                     0,
-                                                     "Error from Component Thread in select");
+            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->curState);
             eError = OMX_ErrorInsufficientResources;
-        } 
+        }
         else if (FD_ISSET (pComponentPrivate->dataPipe[0], &rfds)) {
             OMX_PRCOMM2(pComponentPrivate->dbg, "%d :: DATA pipe is set in Component Thread\n",__LINE__);
             ret = read(pComponentPrivate->dataPipe[0], &pBufHeader, sizeof(pBufHeader));

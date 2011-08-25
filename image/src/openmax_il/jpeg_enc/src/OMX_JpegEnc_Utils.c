@@ -383,6 +383,7 @@ OMX_ERRORTYPE JPEGEnc_Start_ComponentThread(OMX_HANDLETYPE pComponent)
     pComponentPrivate->nNum_dspBuf = 0;
 
     /* Create the Component Thread */
+    pComponentPrivate->bExitCompThrd = 0;
     eError = pthread_create (&(pComponentPrivate->ComponentThread), NULL,
                              OMX_JpegEnc_Thread, pComponent);
 
@@ -445,6 +446,7 @@ OMX_ERRORTYPE JPEGEnc_Free_ComponentResources(JPEGENC_COMPONENT_PRIVATE *pCompon
     	pComponentPrivate->isLCMLActive = 0;
     }
 
+    pComponentPrivate->bExitCompThrd = 1;
     pipeError = write(pComponentPrivate->nCmdPipe[1], &eCmd, sizeof(eCmd));
     if (pipeError == -1) {
         eError = OMX_ErrorHardware;
@@ -1548,7 +1550,7 @@ OMX_ERRORTYPE HandleJpegEncCommand (JPEGENC_COMPONENT_PRIVATE *pComponentPrivate
                 pComponentPrivate->cbInfo.EventHandler(pHandle,
                                                        pHandle->pApplicationPrivate,
                                                        OMX_EventError,
-                                                       OMX_ErrorHardware,
+                                                       OMX_ErrorInvalidState,
                                                        OMX_TI_ErrorSevere,
                                                        NULL);
                 goto EXIT;

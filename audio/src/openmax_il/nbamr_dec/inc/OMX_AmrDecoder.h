@@ -848,6 +848,8 @@ typedef struct AMRDEC_COMPONENT_PRIVATE
 
     PV_OMXComponentCapabilityFlagsType iPVCapabilityFlags;
 
+    OMX_BOOL errorSent;
+
     struct OMX_TI_Debug dbg;
 
     /** Indicate when first output buffer received from DSP **/

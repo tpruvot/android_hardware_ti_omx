@@ -384,8 +384,6 @@ OMX_ERRORTYPE OMX_ComponentInit (OMX_HANDLETYPE hComponent)
     pComponentPrivate->bUnresponsiveDsp     = OMX_FALSE;
     pComponentPrivate->bCodecLoaded         = OMX_FALSE;
     pComponentPrivate->cComponentName       = "OMX.TI.Video.encoder";
-    pComponentPrivate->sps = NULL;
-    pComponentPrivate->spsLen = 0;
 
 #ifdef __KHRONOS_CONF__
     pComponentPrivate->bPassingIdleToLoaded = OMX_FALSE;
@@ -996,6 +994,7 @@ sDynamicFormat = getenv("FORMAT");
     }
 #endif
     /* Create the Component Thread */
+    pComponentPrivate->bExitCompThrd = 0;
 #ifdef UNDER_CE
     attr.__inheritsched = PTHREAD_EXPLICIT_SCHED;
     attr.__schedparam.__sched_priority = OMX_VIDEO_ENCODER_THREAD_PRIORITY;
@@ -3134,6 +3133,7 @@ static OMX_ERRORTYPE ComponentDeInit(OMX_IN OMX_HANDLETYPE hComponent)
 
     pComponentPrivate->bCodecStarted = OMX_FALSE;
 
+    pComponentPrivate->bExitCompThrd = 1;
     nStop = -1;
 #ifdef __PERF_INSTRUMENTATION__
     PERF_SendingCommand(pComponentPrivate->pPERF, nStop, 0, PERF_ModuleComponent);
@@ -3263,6 +3263,7 @@ static OMX_ERRORTYPE ComponentDeInit(OMX_IN OMX_HANDLETYPE hComponent)
 
     pthread_mutex_destroy(&pComponentPrivate->mutexStateChangeRequest);
     pthread_cond_destroy(&pComponentPrivate->StateChangeCondition);
+    pthread_mutex_destroy(&pComponentPrivate->mutexCircularBuffer);
 
     if (pComponentPrivate != NULL)
     {
@@ -4091,9 +4092,9 @@ static OMX_ERRORTYPE ComponentRoleEnum(OMX_IN OMX_HANDLETYPE hComponent,
 
     if (hComponent==NULL)
     {
-        goto OMX_CONF_CMD_BAIL;
         eError= OMX_ErrorBadParameter;
-        }
+        goto OMX_CONF_CMD_BAIL;
+    }
 
     pComponentPrivate = (VIDENC_COMPONENT_PRIVATE*)(((OMX_COMPONENTTYPE*)hComponent)->pComponentPrivate);
 

@@ -153,12 +153,7 @@ void* WBAMRENC_CompThread(void* pThreadData) {
             OMX_PRINT2(pComponentPrivate->dbg, "Component Time Out !!!!! \n");
         } else if (-1 == status) {
             OMX_ERROR4(pComponentPrivate->dbg, "Error in Select\n");
-            pComponentPrivate->cbInfo.EventHandler ( pHandle,
-                    pHandle->pApplicationPrivate,
-                    OMX_EventError,
-                    OMX_ErrorInsufficientResources,
-                    OMX_TI_ErrorSevere,
-                    "Error from Component Thread in select");
+            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->curState);
             eError = OMX_ErrorInsufficientResources;
         } else if ((FD_ISSET (pComponentPrivate->dataPipe[0], &rfds))) {
             OMX_PRCOMM2(pComponentPrivate->dbg, "DATA pipe is set in Component Thread\n");
@@ -204,14 +199,10 @@ void* WBAMRENC_CompThread(void* pThreadData) {
 #endif
 
                 if (pComponentPrivate->bPreempted == 0) {
-                   if(RemoveStateTransition(pComponentPrivate, OMX_TRUE) != OMX_ErrorNone) {
-                       return OMX_ErrorUndefined;
-                   }
-
                     pComponentPrivate->cbInfo.EventHandler( pHandle,
                                                             pHandle->pApplicationPrivate,
                                                             OMX_EventCmdComplete,
-                                                            OMX_CommandStateSet,
+                                                            OMX_ErrorNone,
                                                             pComponentPrivate->curState,
                                                             NULL);
                 } else {

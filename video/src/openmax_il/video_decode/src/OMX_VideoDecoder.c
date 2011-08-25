@@ -480,6 +480,7 @@ OMX_ERRORTYPE OMX_ComponentInit (OMX_HANDLETYPE hComponent)
 #endif
 
     /* Start the component thread */
+    pComponentPrivate->bExitCompThrd = 0;
     eError = VIDDEC_Start_ComponentThread(pHandle);
     if (eError != OMX_ErrorNone) {
         OMX_ERROR4(pComponentPrivate->dbg, "Error returned from the Component\n");
@@ -2594,6 +2595,7 @@ static OMX_ERRORTYPE VIDDEC_ComponentDeInit(OMX_HANDLETYPE hComponent)
             pComponentPrivate->eLCMLState = VidDec_LCML_State_Unload;
         }
     }
+    pComponentPrivate->bExitCompThrd = 1;
     eError = write(pComponentPrivate->cmdPipe[VIDDEC_PIPE_WRITE], &Cmd, sizeof(Cmd));
     if (eError == -1) {
         eError = OMX_ErrorUndefined;
@@ -2829,11 +2831,12 @@ static OMX_ERRORTYPE VIDDEC_ComponentDeInit(OMX_HANDLETYPE hComponent)
     OMX_DBG_CLOSE(pComponentPrivate->dbg);
 
 #ifndef UNDER_CE
-    if(pComponentPrivate->eFirstBuffer.pFirstBufferSaved){
-        free(pComponentPrivate->eFirstBuffer.pFirstBufferSaved);
-        pComponentPrivate->eFirstBuffer.pFirstBufferSaved = NULL;
+    if(pComponentPrivate->eFirstBuffer.pBufferHdr){
+        if(pComponentPrivate->eFirstBuffer.pBufferHdr->pBuffer){
+            OMX_MEMFREE_STRUCT(pComponentPrivate->eFirstBuffer.pBufferHdr->pBuffer);
+        }
+        OMX_FREE_VIDDEC(pComponentPrivate->eFirstBuffer.pBufferHdr);
         pComponentPrivate->eFirstBuffer.bSaveFirstBuffer = OMX_FALSE;
-        pComponentPrivate->eFirstBuffer.nFilledLen = 0;
     }
     if(pComponentPrivate->pCodecData){
         free(pComponentPrivate->pCodecData);

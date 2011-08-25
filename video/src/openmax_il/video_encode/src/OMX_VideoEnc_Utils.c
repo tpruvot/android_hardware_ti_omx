@@ -388,34 +388,37 @@ OMX_ERRORTYPE OMX_VIDENC_HandleError(VIDENC_COMPONENT_PRIVATE* pComponentPrivate
 
     pComponentPrivate->bHandlingFatalError = OMX_TRUE;
 
-    OMX_VIDENC_EVENT_HANDLER(pComponentPrivate,
-                             OMX_EventError,
-                             eErrorCmp,
-                             OMX_TI_ErrorSevere,
-                             NULL);
-
     switch (eErrorCmp)
     {
         case OMX_ErrorBadParameter:
         case OMX_ErrorPortUnresponsiveDuringAllocation:
         case OMX_ErrorUnsupportedIndex:
         case OMX_ErrorInsufficientResources:
+	    OMX_VIDENC_EVENT_HANDLER(pComponentPrivate,
+                             OMX_EventError,
+                             eErrorCmp,
+                             OMX_TI_ErrorSevere,
+                             NULL);
             goto OMX_CONF_CMD_BAIL;
         default:
             ;
     }
 
-    pComponentPrivate->bHideEvents = OMX_TRUE;
+    pComponentPrivate->bHideEvents = OMX_FALSE;
 
     eError = eErrorCmp;
     pComponentPrivate->eState = OMX_StateInvalid;
-
-    OMX_VIDENC_EVENT_HANDLER(pComponentPrivate,
-                             OMX_EventError,
-                             OMX_ErrorInvalidState,
-                             OMX_TI_ErrorCritical,
-                             NULL);
-
+    if (!pComponentPrivate->errorSent) {
+	    OMX_VIDENC_EVENT_HANDLER(pComponentPrivate,
+		                     OMX_EventError,
+		                     OMX_ErrorInvalidState,
+		                     OMX_TI_ErrorCritical,
+		                     NULL);
+	    OMX_ERROR5(pComponentPrivate->dbg, "*Fatal Error : %x sent\n", eError);
+	    pComponentPrivate->errorSent = OMX_TRUE;
+    } else {
+            OMX_PRINT1(pComponentPrivate->dbg, "*Fatal Error : %x NOT sent\n", eError);
+    }
 OMX_CONF_CMD_BAIL:
     if (pComponentPrivate)
         pComponentPrivate->bHandlingFatalError = OMX_FALSE;
@@ -1328,12 +1331,6 @@ OMX_ERRORTYPE OMX_VIDENC_HandleCommandStateSetIdle(VIDENC_COMPONENT_PRIVATE* pCo
                    pComponentPrivate->pLCML = NULL;
                 }
 
-                if (pComponentPrivate->sps) {
-                    free(pComponentPrivate->sps);
-                    pComponentPrivate->sps = NULL;
-                    pComponentPrivate->spsLen = 0;
-                }
-
                 pComponentPrivate->bCodecStarted = OMX_FALSE;
                 pComponentPrivate->bCodecLoaded = OMX_FALSE;
             }
@@ -1816,7 +1813,7 @@ OMX_ERRORTYPE OMX_VIDENC_HandleCommandStateSetExecuting(VIDENC_COMPONENT_PRIVATE
             OMX_VIDENC_EVENT_HANDLER(pComponentPrivate, OMX_EventError, OMX_ErrorSameState, OMX_TI_ErrorMinor, NULL);
             break;
         case OMX_StateIdle:
-            OMX_CONF_CIRCULAR_BUFFER_RESTART(pComponentPrivate->sCircularBuffer);
+            OMX_CONF_CIRCULAR_BUFFER_RESTART(pComponentPrivate, pComponentPrivate->sCircularBuffer);
         case OMX_StatePause:
             if (pComponentPrivate->bCodecStarted == OMX_FALSE)
             {
@@ -2545,9 +2542,9 @@ OMX_ERRORTYPE OMX_VIDENC_Process_FilledInBuf(VIDENC_COMPONENT_PRIVATE* pComponen
         /*< Mechanism to do intra Refresh, see IH264VENC_IntraRefreshMethods for valid values*/
         ((H264VE_GPP_SN_UALGInputParams*)pUalgInpParams)->H264VENC_TI_DYNAMICPARAMS.intraRefreshMethod = IH264_INTRAREFRESH_NONE;
         /* Enable Perceptual Quantization a.k.a. Perceptual Rate Control*/
-        ((H264VE_GPP_SN_UALGInputParams*)pUalgInpParams)->H264VENC_TI_DYNAMICPARAMS.perceptualQuant = 0;
+        ((H264VE_GPP_SN_UALGInputParams*)pUalgInpParams)->H264VENC_TI_DYNAMICPARAMS.perceptualQuant = 1;
         /* Enable Scene Change Detection*/
-        ((H264VE_GPP_SN_UALGInputParams*)pUalgInpParams)->H264VENC_TI_DYNAMICPARAMS.sceneChangeDet = 0;
+        ((H264VE_GPP_SN_UALGInputParams*)pUalgInpParams)->H264VENC_TI_DYNAMICPARAMS.sceneChangeDet = 1;
         /*< Function pointer of the call-back function to be used by Encoder*/
         ((H264VE_GPP_SN_UALGInputParams*)pUalgInpParams)->H264VENC_TI_DYNAMICPARAMS.pfNalUnitCallBack = NULL;
 
@@ -2604,6 +2601,7 @@ OMX_ERRORTYPE OMX_VIDENC_Process_FilledInBuf(VIDENC_COMPONENT_PRIVATE* pComponen
 
         pComponentPrivate->bForceIFrame = 0;
         ++pComponentPrivate->nFrameCnt;
+
 
         printH264UAlgInParam(pUalgInpParams, 0, &pComponentPrivate->dbg);
         OMX_CONF_CIRCULAR_BUFFER_MOVE_TAIL(pBufHead,
@@ -2815,8 +2813,6 @@ OMX_ERRORTYPE OMX_VIDENC_Process_FilledOutBuf(VIDENC_COMPONENT_PRIVATE* pCompone
 
         if (pPortDefOut->format.video.eCompressionFormat == OMX_VIDEO_CodingAVC)
         {
-            pBufHead->nFlags &= ~OMX_BUFFERFLAG_CODECCONFIG;
-
         /*Copy Buffer Data to be propagated*/
         if((pComponentPrivate->AVCNALFormat == VIDENC_AVC_NAL_SLICE) &&
                 (pSNPrivateParams->ulNALUnitsPerFrame != (pSNPrivateParams->ulNALUnitIndex+1)) &&
@@ -2836,8 +2832,6 @@ OMX_ERRORTYPE OMX_VIDENC_Process_FilledOutBuf(VIDENC_COMPONENT_PRIVATE* pCompone
             pBufHead->nFlags |= OMX_BUFFERFLAG_ENDOFFRAME;
         }
 
-
-            /* Set lFrameType*/
             if (((H264VE_GPP_SN_UALGOutputParams*)pBufferPrivate->pUalgParam)->lFrameType == OMX_LFRAMETYPE_H264 ||
                  ((H264VE_GPP_SN_UALGOutputParams*)pBufferPrivate->pUalgParam)->lFrameType == OMX_LFRAMETYPE_IDR_H264)
             {
@@ -2847,34 +2841,9 @@ OMX_ERRORTYPE OMX_VIDENC_Process_FilledOutBuf(VIDENC_COMPONENT_PRIVATE* pCompone
                     /* Need to drop subsequent SPS or PPS NAL unit since opencore does not
                      * correctly handle storage */
                     if (!pComponentPrivate->bSentFirstSpsPps) {
-                        if (nalType == SPS_CODE_PREFIX) {
-                            // Save SPS and send it along with PPS later in a single buffer
-                            // Workaround to send a 0-length buffer first.
-                            // Ideally, we should not send a buffer at all.
-                            pComponentPrivate->sps = malloc(4 + pBufHead->nFilledLen);
-                            pComponentPrivate->spsLen = 4 + pBufHead->nFilledLen;
-                            memcpy(pComponentPrivate->sps, "\x00\x00\x00\x01", 4);
-                            memcpy(pComponentPrivate->sps + 4, pBufHead->pBuffer, pBufHead->nFilledLen);
-                            pBufHead->nFilledLen = 0;
-                        }
-
                         /* we can assume here that PPS always comes second */
                         if (nalType == PPS_CODE_PREFIX) {
                             pComponentPrivate->bSentFirstSpsPps = OMX_TRUE;
-                            if (pComponentPrivate->sps == NULL ||
-                                pComponentPrivate->spsLen == 0) {
-                                OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUndefined);
-                            }
-                            memmove(pBufHead->pBuffer + pComponentPrivate->spsLen + 4,
-                                    pBufHead->pBuffer, pBufHead->nFilledLen);
-                            memmove(pBufHead->pBuffer,
-                                    pComponentPrivate->sps, pComponentPrivate->spsLen);
-                            memcpy(pBufHead->pBuffer + pComponentPrivate->spsLen, "\x00\x00\x00\x01", 4);
-                            pBufHead->nFilledLen += pComponentPrivate->spsLen + 4;
-                            pBufHead->nFlags |= OMX_BUFFERFLAG_CODECCONFIG;
-                            free(pComponentPrivate->sps);
-                            pComponentPrivate->sps = NULL;
-                            pComponentPrivate->spsLen = 0;
                         }
                     } else {
                         pBufHead->nFilledLen = 0;
@@ -2929,8 +2898,6 @@ OMX_ERRORTYPE OMX_VIDENC_Process_FilledOutBuf(VIDENC_COMPONENT_PRIVATE* pCompone
         else if (pPortDefOut->format.video.eCompressionFormat == OMX_VIDEO_CodingMPEG4 ||
                  pPortDefOut->format.video.eCompressionFormat == OMX_VIDEO_CodingH263)
         {
-            pBufHead->nFlags &= ~OMX_BUFFERFLAG_CODECCONFIG;
-
             /*We ignore the first Mpeg4 buffer which contains VOL Header since we did not add it to the circular list*/
             if(pComponentPrivate->bWaitingForVOLHeaderBuffer == OMX_FALSE)
             {
@@ -2940,7 +2907,6 @@ OMX_ERRORTYPE OMX_VIDENC_Process_FilledOutBuf(VIDENC_COMPONENT_PRIVATE* pCompone
             else
             {
                 pComponentPrivate->bWaitingForVOLHeaderBuffer = OMX_FALSE;
-                pBufHead->nFlags |= OMX_BUFFERFLAG_CODECCONFIG;
             }
 
             pBufHead->nFlags |= OMX_BUFFERFLAG_ENDOFFRAME;
@@ -3327,7 +3293,7 @@ OMX_ERRORTYPE OMX_VIDENC_InitDSP_H264Enc(VIDENC_COMPONENT_PRIVATE* pComponentPri
     pCreatePhaseArgs->ucMVRange               = (pMotionVector->sXSearchRange > pMotionVector->sYSearchRange ? pMotionVector->sXSearchRange : pMotionVector->sYSearchRange);
     pCreatePhaseArgs->ucQPIFrame              = 28;
     pCreatePhaseArgs->ucProfile               = 66;
-    pCreatePhaseArgs->ulIntraFramePeriod      = pCreatePhaseArgs->ulFrameRate > 15000 ? 29 : 14;
+    pCreatePhaseArgs->ulIntraFramePeriod      = 300;
 
     if (pH264->eLevel == OMX_VIDEO_AVCLevel1b)
     {
@@ -3373,8 +3339,9 @@ OMX_ERRORTYPE OMX_VIDENC_InitDSP_H264Enc(VIDENC_COMPONENT_PRIVATE* pComponentPri
     }
     else
     {
-        OMX_PRDSP4(pComponentPrivate->dbg, "Unsupported level. (%x)\n", pH264->eLevel);
-        pCreatePhaseArgs->ucLevel = 30;
+        OMX_DBG_SET_ERROR_BAIL(eError, OMX_ErrorUnsupportedSetting,
+                               pComponentPrivate->dbg, OMX_PRDSP2,
+                               "Unsupported level.\n");
     }
 
     /* override parameters for VGA & D1 encoding */
@@ -3382,13 +3349,14 @@ OMX_ERRORTYPE OMX_VIDENC_InitDSP_H264Enc(VIDENC_COMPONENT_PRIVATE* pComponentPri
         pPortDefIn->format.video.nFrameHeight >= 480) &&
         pCreatePhaseArgs->ulFrameRate > 15000)
     {
-        pComponentPrivate->maxMVperMB = 1;
-        pComponentPrivate->intra4x4EnableIdc = INTRA4x4_ISLICES;
+        pComponentPrivate->maxMVperMB = 4;
+        //pComponentPrivate->intra4x4EnableIdc = INTRA4x4_IPSLICES; increased Mhz
+	pComponentPrivate->intra4x4EnableIdc = INTRA4x4_ISLICES;
         pComponentPrivate->nIntraFrameInterval = 30;
         pComponentPrivate->nAIRRate = 0;
         /* Encoding preset = 4 enables DSP side optimizations for high resolutions */
-        pComponentPrivate->nEncodingPreset = 4;
-        pCreatePhaseArgs->ulIntraFramePeriod = 0;
+        pComponentPrivate->nEncodingPreset = 3;
+        pCreatePhaseArgs->ulIntraFramePeriod = 300;
         /* Constant bit rate control enabled */
         pCreatePhaseArgs->ucRateControlAlgorithm = 1;
         pCreatePhaseArgs->ucLevel = 30;
@@ -3684,8 +3652,8 @@ OMX_ERRORTYPE OMX_VIDENC_InitDSP_Mpeg4Enc(VIDENC_COMPONENT_PRIVATE* pComponentPr
         }
         else
         {
-            OMX_PRDSP4(pComponentPrivate->dbg, "Unsupported level. (%x)\n", pMpeg4->eLevel);
-            pCreatePhaseArgs->ucLevel = 0;
+                OMX_PRDSP2(pComponentPrivate->dbg, "Unsupported level.\n");
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUnsupportedSetting);
         }
 #else
         pCreatePhaseArgs->ucLevel = pMpeg4->eLevel;
@@ -3731,8 +3699,8 @@ OMX_ERRORTYPE OMX_VIDENC_InitDSP_Mpeg4Enc(VIDENC_COMPONENT_PRIVATE* pComponentPr
         }
         else
         {
-            OMX_PRDSP4(pComponentPrivate->dbg, "Unsupported level. (%x)\n", pH263->eLevel);
-            pCreatePhaseArgs->ucLevel = 70;
+            OMX_PRDSP2(pComponentPrivate->dbg, "Unsupported level.\n");
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorUnsupportedSetting);
         }
 
         pCreatePhaseArgs->enableH263AnnexI  = 0;
@@ -4299,6 +4267,7 @@ void printMpeg4Params(MP4VE_GPP_SN_Obj_CreatePhase* pCreatePhaseArgs,
 }
 void printH264CreateParams(H264VE_GPP_SN_Obj_CreatePhase* pCreatePhaseArgs, struct OMX_TI_Debug *dbg)
 {
+#if 0
     OMX_PRDSP2(*dbg, "\nusNumStreams = %d\n", pCreatePhaseArgs->usNumStreams);
     OMX_PRDSP2(*dbg, "usStreamId = %d\n", pCreatePhaseArgs->usStreamId);
     OMX_PRDSP2(*dbg, "usBuffTypeInStream = %d\n", pCreatePhaseArgs->usBuffTypeInStream);
@@ -4328,6 +4297,42 @@ void printH264CreateParams(H264VE_GPP_SN_Obj_CreatePhase* pCreatePhaseArgs, stru
     OMX_PRDSP2(*dbg, "usNalCallback = %d\n", pCreatePhaseArgs->usNalCallback);
     OMX_PRDSP2(*dbg, "ulEncodingPreset = %d\n", pCreatePhaseArgs->ulEncodingPreset);
     OMX_PRDSP2(*dbg, "ulRcAlgo = %d\n", pCreatePhaseArgs->ulRcAlgo);
+#endif
+
+    LOGE( "\nusNumStreams = %d\n", pCreatePhaseArgs->usNumStreams);
+    LOGE( "usStreamId = %d\n", pCreatePhaseArgs->usStreamId);
+    LOGE( "usBuffTypeInStream = %d\n", pCreatePhaseArgs->usBuffTypeInStream);
+    LOGE( "usMaxBuffsInStream = %d\n", pCreatePhaseArgs->usMaxBuffsInStream);
+    LOGE( "usStreamId2 = %d\n", pCreatePhaseArgs->usStreamId2);
+    LOGE( "usBuffTypeInStream2 = %d\n", pCreatePhaseArgs->usBuffTypeInStream2);
+    LOGE( "usMaxBuffsInStream2 = %d\n", pCreatePhaseArgs->usMaxBuffsInStream2);
+
+    LOGE( "ulWidth = %d\n", pCreatePhaseArgs->ulWidth);
+    LOGE( "ulHeight = %d\n", pCreatePhaseArgs->ulHeight);
+    LOGE( "ulTargetBitRate = %d\n", pCreatePhaseArgs->ulTargetBitRate);
+    LOGE( "ulBitstreamBuffSize = %d\n", pCreatePhaseArgs->ulBitstreamBuffSize);
+    LOGE( "ulIntraFramePeriod = %d\n", pCreatePhaseArgs->ulIntraFramePeriod);
+    LOGE( "ulFrameRate = %d\n", pCreatePhaseArgs->ulFrameRate);
+
+    LOGE( "ucYUVFormat = %d\n", pCreatePhaseArgs->ucYUVFormat);
+    LOGE( "ucUnrestrictedMV = %d\n", pCreatePhaseArgs->ucUnrestrictedMV);
+    LOGE( "ucNumRefFrames = %d\n", pCreatePhaseArgs->ucNumRefFrames);
+    LOGE( "ucRateControlAlgorithm = %d\n", pCreatePhaseArgs->ucRateControlAlgorithm);
+    LOGE( "ucIDREnable = %d\n", pCreatePhaseArgs->ucIDREnable);
+    LOGE( "ucDeblockingEnable = %d\n", pCreatePhaseArgs->ucDeblockingEnable);
+    LOGE( "ucMVRange = %d\n", pCreatePhaseArgs->ucMVRange);
+    LOGE( "ucQPIFrame = %d\n", pCreatePhaseArgs->ucQPIFrame);
+    LOGE( "ucProfile = %d\n", pCreatePhaseArgs->ucProfile);
+    LOGE( "ucLevel = %d\n", pCreatePhaseArgs->ucLevel);
+
+    LOGE( "usNalCallback = %d\n", pCreatePhaseArgs->usNalCallback);
+    LOGE( "ulEncodingPreset = %d\n", pCreatePhaseArgs->ulEncodingPreset);
+    LOGE( "ulRcAlgo = %d\n", pCreatePhaseArgs->ulRcAlgo);
+
+
+
+
+
 }
 
 void printMpeg4UAlgInParam(MP4VE_GPP_SN_UALGInputParams* pUalgInpParams, int printAlways, struct OMX_TI_Debug *dbg)
@@ -4371,6 +4376,7 @@ void printH264UAlgInParam(H264VE_GPP_SN_UALGInputParams* pUalgInpParams, int pri
     if(printAlways || !printed)
     {
         printed++;
+#if 0
         OMX_PRDSP2(*dbg, "\nqpIntra = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.qpIntra);
         OMX_PRDSP2(*dbg, "qpInter = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.qpInter);
         OMX_PRDSP2(*dbg, "qpMax = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.qpMax);
@@ -4403,12 +4409,48 @@ void printH264UAlgInParam(H264VE_GPP_SN_UALGInputParams* pUalgInpParams, int pri
         OMX_PRDSP2(*dbg, "sliceGroupChangeRate = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.sliceGroupChangeRate);
         OMX_PRDSP2(*dbg, "sliceGroupChangeCycle = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.sliceGroupChangeCycle);
         OMX_PRDSP2(*dbg, "ulFrameIndex = %lu\n", pUalgInpParams->ulFrameIndex);
+#endif
+        LOGE("\nqpIntra = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.qpIntra);
+        LOGE("qpInter = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.qpInter);
+        LOGE("qpMax = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.qpMax);
+        LOGE( "qpMin = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.qpMin);
+        LOGE( "lfDisableIdc = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.lfDisableIdc);
+        LOGE( "quartPelDisable = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.quartPelDisable);
+        LOGE( "airMbPeriod = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.airMbPeriod);
+        LOGE( "maxMBsPerSlice = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.maxMBsPerSlice);
+        LOGE( "maxBytesPerSlice = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.maxBytesPerSlice);
+        LOGE( "sliceRefreshRowStartNumber = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.sliceRefreshRowStartNumber);
+        LOGE( "sliceRefreshRowNumber = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.sliceRefreshRowNumber);
+        LOGE( "filterOffsetA = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.filterOffsetA);
+        LOGE( "filterOffsetB = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.filterOffsetB);
+        LOGE( "log2MaxFNumMinus4 = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.log2MaxFNumMinus4);
+        LOGE( "chromaQPIndexOffset = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.chromaQPIndexOffset);
+        LOGE( "constrainedIntraPredEnable = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.constrainedIntraPredEnable);
+        LOGE( "picOrderCountType = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.picOrderCountType);
+        LOGE( "maxMVperMB = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.maxMVperMB);
+        LOGE( "intra4x4EnableIdc = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.intra4x4EnableIdc);
+        LOGE( "mvDataEnable = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.mvDataEnable);
+        LOGE( "hierCodingEnable = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.hierCodingEnable);
+        LOGE( "streamFormat = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.streamFormat);
+        LOGE( "intraRefreshMethod = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.intraRefreshMethod);
+        LOGE( "perceptualQuant = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.perceptualQuant);
+        LOGE( "sceneChangeDet = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.sceneChangeDet);
+        LOGE( "numSliceASO = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.numSliceASO);
+        LOGE( "numSliceGroups = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.numSliceGroups);
+        LOGE("sliceGroupMapType = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.sliceGroupMapType);
+        LOGE("sliceGroupChangeDirectionFlag = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.sliceGroupChangeDirectionFlag);
+        LOGE( "sliceGroupChangeRate = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.sliceGroupChangeRate);
+        LOGE("sliceGroupChangeCycle = %lu\n", pUalgInpParams->H264VENC_TI_DYNAMICPARAMS.sliceGroupChangeCycle);
+        LOGE("ulFrameIndex = %lu\n", pUalgInpParams->ulFrameIndex);
+
+
+
     }
 }
 
 OMX_ERRORTYPE IsResolutionPlayable (OMX_U32 width, OMX_U32 height)
 {
-    if (width  > WVGA_MAX_WIDTH || height > WVGA_MAX_HEIGHT) 
+    if (width  > WVGA_MAX_WIDTH || height > WVGA_MAX_WIDTH || (width*height > WVGA_MAX_WIDTH*WVGA_MAX_HEIGHT)) 
     {
         return OMX_ErrorBadParameter;
     }

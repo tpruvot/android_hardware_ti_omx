@@ -178,20 +178,18 @@ void* OMX_VidDec_Thread (void* pThreadData)
         status = pselect (fdmax+1, &rfds, NULL, NULL, NULL, &set);
         sigdelset (&set, SIGALRM);
 #endif
-        
+
+        if (pComponentPrivate->bExitCompThrd == 1) {
+            OMX_ERROR4(pComponentPrivate->dbg, "%d :: Comp Thrd Exiting here...\n",__LINE__);
+            break;
+        }
+
         if (0 == status) {
             ;
-        } 
+        }
         else if (-1 == status) {
-            OMX_TRACE4(pComponentPrivate->dbg, "Error in Select\n");
-            pComponentPrivate->cbInfo.EventHandler(pComponentPrivate->pHandle,
-                                                   pComponentPrivate->pHandle->pApplicationPrivate,
-                                                   OMX_EventError,
-                                                   OMX_ErrorInsufficientResources, 
-                                                   OMX_TI_ErrorSevere,
-                                                   "Error from Component Thread in select");
+            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->eState);
 	     eError = OMX_ErrorInsufficientResources;
-            break;
         }
         else {
             if (FD_ISSET(pComponentPrivate->cmdPipe[VIDDEC_PIPE_READ], &rfds)) {
@@ -292,17 +290,17 @@ void* OMX_VidDec_Thread (void* pThreadData)
                     }
                 }
                 if ((FD_ISSET(pComponentPrivate->filled_inpBuf_Q[VIDDEC_PIPE_READ], &rfds))){
-                    OMX_PRSTATE2(pComponentPrivate->dbg, "eExecuteToIdle 0x%x\n",pComponentPrivate->eExecuteToIdle);
+                    OMX_PRSTATE2(pComponentPrivate->dbg, "eExecuteToIdle 0x%x eLCMLState %d\n",pComponentPrivate->eExecuteToIdle, pComponentPrivate->eLCMLState);
                     /* When doing a reconfiguration, don't send input buffers to SN & wait for SN to be ready*/
-                    if(pComponentPrivate->bDynamicConfigurationInProgress == OMX_TRUE || 
-                            pComponentPrivate->eLCMLState != VidDec_LCML_State_Start){
+                    if((pComponentPrivate->bDynamicConfigurationInProgress == OMX_TRUE) ||
+                        (pComponentPrivate->eLCMLState != VidDec_LCML_State_Start)){
                         VIDDEC_WAIT_CODE();
                          continue;
                     }
                     else{
-                   eError = VIDDEC_HandleDataBuf_FromApp (pComponentPrivate);     
+                   eError = VIDDEC_HandleDataBuf_FromApp (pComponentPrivate);
                     if (eError != OMX_ErrorNone) {
-                        OMX_PRBUFFER4(pComponentPrivate->dbg, "Error while handling filled input buffer\n");
+                        OMX_PRBUFFER4(pComponentPrivate->dbg, "Error while handling filled input buffer %x\n",eError);
                         pComponentPrivate->cbInfo.EventHandler(pComponentPrivate->pHandle,
                                                                pComponentPrivate->pHandle->pApplicationPrivate,
                                                                OMX_EventError,

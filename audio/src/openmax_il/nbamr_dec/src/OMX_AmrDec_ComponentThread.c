@@ -147,12 +147,7 @@ void* NBAMRDEC_ComponentThread (void* pThreadData)
              OMX_PRDSP1(pComponentPrivate->dbg, "%d :: OMX_AmrDec_ComponentThread.c :: Component Time Out !!!!!!!!!!!! \n",__LINE__);
         } else if (-1 == status) {
             OMX_ERROR4(pComponentPrivate->dbg, "%d :: OMX_AmrDec_ComponentThread.c :: Error in Select\n", __LINE__);
-            pComponentPrivate->cbInfo.EventHandler (pHandle,
-                                                    pHandle->pApplicationPrivate,
-                                                    OMX_EventError,
-                                                    OMX_ErrorInsufficientResources,
-                                                    OMX_TI_ErrorSevere,
-                                                    "Error from Component Thread in select");
+            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->curState);
             eError = OMX_ErrorInsufficientResources;
         }
         else if (FD_ISSET (pComponentPrivate->dataPipe[0], &rfds)) {

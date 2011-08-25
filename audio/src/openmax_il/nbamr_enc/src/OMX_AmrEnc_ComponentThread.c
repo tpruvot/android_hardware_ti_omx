@@ -159,12 +159,7 @@ void* NBAMRENC_CompThread(void* pThreadData)
              OMX_PRINT1(pComponentPrivate->dbg, "%d :: Component Time Out !!!!! \n",__LINE__);
         } else if(-1 == status) {
             OMX_ERROR4(pComponentPrivate->dbg, "%d :: Error in Select\n", __LINE__);
-            pComponentPrivate->cbInfo.EventHandler ( pHandle,
-                                                     pHandle->pApplicationPrivate,
-                                                     OMX_EventError,
-                                                     OMX_ErrorInsufficientResources,
-                                                     OMX_TI_ErrorSevere,
-                                                     "Error from Component Thread in select");
+            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->curState);
             eError = OMX_ErrorInsufficientResources;
 
         } else if ((FD_ISSET (pComponentPrivate->dataPipe[0], &rfds))
@@ -198,18 +193,12 @@ void* NBAMRENC_CompThread(void* pThreadData)
 #endif
 
                 if(pComponentPrivate->bPreempted==0){
-
-                    if(RemoveStateTransition(pComponentPrivate, OMX_TRUE) != OMX_ErrorNone) {
-                        return OMX_ErrorUndefined;
-                    }
-
-                    pComponentPrivate->cbInfo.EventHandler(pComponentPrivate->pHandle,
-                                                           pComponentPrivate->pHandle->pApplicationPrivate,
-                                                           OMX_EventCmdComplete,
-                                                           OMX_CommandStateSet,
-                                                           pComponentPrivate->curState,
-                                                           NULL);
-
+                    pComponentPrivate->cbInfo.EventHandler( pHandle,
+                                                            pHandle->pApplicationPrivate,
+                                                            OMX_EventCmdComplete,
+                                                            OMX_ErrorNone,
+                                                            pComponentPrivate->curState,
+                                                            NULL);
                 }
                 else{
                     pComponentPrivate->cbInfo.EventHandler( pHandle,
@@ -220,7 +209,9 @@ void* NBAMRENC_CompThread(void* pThreadData)
                                                             NULL);
                     pComponentPrivate->bPreempted = 0;
                 }
-                goto EXIT;
+
+
+                    
             }
         }
     

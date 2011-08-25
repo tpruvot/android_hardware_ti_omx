@@ -65,6 +65,9 @@ int32 GetNAL_Config(uint8** bitstream, int32* size);
 
 OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs, tiVideoConfigParserOutputs *aOutputs, char* pComponentName)
 {
+    //modify entropy only when required
+    aOutputs->entropy = 0;
+
     if (aInputs->iMimeType == PVMF_MIME_M4V) //m4v
     {
         mp4StreamType psBits;
@@ -92,6 +95,24 @@ OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs,
         aOutputs->profile = (uint32)profile_level; // for mp4, profile/level info is packed
         aOutputs->level = 0;
 
+        /*When 720p and other profiles may be handled by other Video Decoder OMX Component,
+          this will let PV know that it will need to load other compponent*/
+        if ( 0 == oscl_strncmp (pComponentName, TI_VID_DEC, oscl_strlen (TI_VID_DEC)) )
+        {
+            if( ((width > WVGA_MAX_WIDTH) || (height > WVGA_MAX_WIDTH)) ||
+                (width*height > WVGA_MAX_WIDTH*WVGA_MAX_HEIGHT) )
+            {
+                return -1;
+            }
+        }
+        if ( 0 == oscl_strncmp (pComponentName, ITTIAM_VID_DEC, oscl_strlen (ITTIAM_VID_DEC)) )
+        {
+            if( ((width > MAX_WIDTH_720P) || (height > MAX_WIDTH_720P)) ||
+                (width*height > MAX_WIDTH_720P*MAX_HEIGHT_720P) )
+            {
+                return -1;
+            }
+        }
     }
     else if (aInputs->iMimeType == PVMF_MIME_H2631998 ||
              aInputs->iMimeType == PVMF_MIME_H2632000)//h263
@@ -154,14 +175,25 @@ OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs,
         aOutputs->height = (uint32)display_height;
         aOutputs->profile = (uint32)profile_idc;
         aOutputs->level = (uint32) level_idc;
+        aOutputs->entropy = (uint32) entropy_coding_mode_flag;
+
 
         /*When 720p and other profiles may be handled by other Video Decoder OMX Component,
           this will let PV know that it will need to load other compponent*/
         if ( 0 == oscl_strncmp (pComponentName, TI_VID_DEC, oscl_strlen (TI_VID_DEC)) )
         {
-            if( ((width > WVGA_MAX_WIDTH) || (height > WVGA_MAX_HEIGHT)) ||
+            if( ((width > WVGA_MAX_WIDTH) || (height > WVGA_MAX_WIDTH)) ||
+                (width*height > WVGA_MAX_WIDTH*WVGA_MAX_HEIGHT) ||
                 (profile_idc != H264_PROFILE_IDC_BASELINE) ||
                 entropy_coding_mode_flag )
+            {
+                return -1;
+            }
+        }
+        if ( 0 == oscl_strncmp (pComponentName, ITTIAM_VID_DEC, oscl_strlen (ITTIAM_VID_DEC)) )
+        {
+            if( ((width > MAX_WIDTH_720P) || (height > MAX_WIDTH_720P)) ||
+                (width*height > MAX_WIDTH_720P*MAX_HEIGHT_720P) )
             {
                 return -1;
             }
@@ -176,7 +208,11 @@ OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs,
         uint8 *pData = aInputs->inPtr;
 
         LoadDWORD(dwdat, pData); // Window width
+        if (dwdat > WVGA_MAX_WIDTH)
+            return -1;
         LoadDWORD(dwdat, pData); // Window height
+        if (dwdat > WVGA_MAX_HEIGHT)
+            return -1;
         LoadBYTE(bdat, pData);
         LoadWORD(wdat, pData);  // Size of image info.
 
@@ -197,8 +233,10 @@ OSCL_EXPORT_REF int16 ti_video_config_parser(tiVideoConfigParserInputs *aInputs,
         // in case of WMV store "Compression Type as Level"
         aOutputs->level = NewCompression;
 
-        if (NewCompression != FOURCC_WMV2 &&
-                NewCompression != FOURCC_WMV3 &&
+// vktx63 : Blocking WMV7 & WMV8
+//        if (NewCompression != FOURCC_WMV2 &&
+//                NewCompression != FOURCC_WMV3 &&
+        if (NewCompression != FOURCC_WMV3 &&
                 NewCompression != FOURCC_WVC1 &&
                 NewCompression != FOURCC_WMVA &&
                 NewCompression != FOURCC_MP42 &&

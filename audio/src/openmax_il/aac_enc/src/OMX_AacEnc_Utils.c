@@ -372,7 +372,7 @@ OMX_ERRORTYPE AACENCFill_LCMLInitParams(OMX_HANDLETYPE pComponent, LCML_DSP *plc
     pComponentPrivate->bPortDefsAllocated = 1;
     pComponentPrivate->bBypassDSP = 0;
     pComponentPrivate->bNoIdleOnStop= OMX_FALSE;
-
+    pComponentPrivate->TimeStamp = 0;
 
     OMX_MALLOC_SIZE_DSPALIGN(pComponentPrivate->ptAlgDynParams,
                                 sizeof(MPEG4AACENC_UALGParams),
@@ -951,16 +951,18 @@ OMX_U32 AACENCHandleCommand(AACENC_COMPONENT_PRIVATE *pComponentPrivate)
 
                         pComponentPrivate->bIsStopping = 1;
 
+						if (pComponentPrivate->codecStop_waitingsignal == 0){ 
+							pthread_mutex_lock(&pComponentPrivate->codecStop_mutex); 	
+						}
                         eError = LCML_ControlCodec(((LCML_DSP_INTERFACE*)pLcmlHandle)->pCodecinterfacehandle,
                                                       MMCodecControlStop,(void *)pArgs);
 
-                        pthread_mutex_lock(&pComponentPrivate->codecStop_mutex);
-                        while (pComponentPrivate->codecStop_waitingsignal == 0){
-                            pthread_cond_wait(&pComponentPrivate->codecStop_threshold, &pComponentPrivate->codecStop_mutex);
-                        }
-                        pComponentPrivate->codecStop_waitingsignal = 0;
-                        pthread_mutex_unlock(&pComponentPrivate->codecStop_mutex);
-
+	                    if (pComponentPrivate->codecStop_waitingsignal == 0){
+	                        pthread_cond_wait(&pComponentPrivate->codecStop_threshold, &pComponentPrivate->codecStop_mutex);
+	                        pComponentPrivate->codecStop_waitingsignal = 0;
+	                        pthread_mutex_unlock(&pComponentPrivate->codecStop_mutex);
+	                    }
+					
                         if(eError != OMX_ErrorNone) 
                         {
                             OMX_ERROR4(pComponentPrivate->dbg, "%d: Error Occurred in Codec Stop..\n",__LINE__);
@@ -1465,15 +1467,18 @@ OMX_U32 AACENCHandleCommand(AACENC_COMPONENT_PRIVATE *pComponentPrivate)
                     pComponentPrivate->bNoIdleOnStop = OMX_TRUE;
                     OMX_PRINT2(pComponentPrivate->dbg, "AACENC: About to stop socket node line %d\n",__LINE__);
 
-                    pComponentPrivate->bIsStopping = 1;
+                        pComponentPrivate->bIsStopping = 1;
+					if (pComponentPrivate->codecStop_waitingsignal == 0){ 
+						pthread_mutex_lock(&pComponentPrivate->codecStop_mutex); 	
+					}
                     eError = LCML_ControlCodec(((LCML_DSP_INTERFACE*)pLcmlHandle)->pCodecinterfacehandle,
                                                   MMCodecControlStop,(void *)pArgs);
-                    pthread_mutex_lock(&pComponentPrivate->codecStop_mutex);
-                    while (pComponentPrivate->codecStop_waitingsignal == 0){
+
+                    if (pComponentPrivate->codecStop_waitingsignal == 0){
                         pthread_cond_wait(&pComponentPrivate->codecStop_threshold, &pComponentPrivate->codecStop_mutex);
+                        pComponentPrivate->codecStop_waitingsignal = 0;
+                        pthread_mutex_unlock(&pComponentPrivate->codecStop_mutex);
                     }
-                    pComponentPrivate->codecStop_waitingsignal = 0;
-                    pthread_mutex_unlock(&pComponentPrivate->codecStop_mutex);
                 }
             }
         }
@@ -2322,6 +2327,7 @@ OMX_ERRORTYPE AACENCLCML_Callback(TUsnCodecEvent event,void * args [10])
     AACENC_COMPONENT_PRIVATE *pComponentPrivate_CC = NULL;
     OMX_S16 i = 0;
     int j =0, k=0 ;
+    OMX_TICKS frame_duration = 0;
 
 #ifdef RESOURCE_MANAGER_ENABLED 
     OMX_ERRORTYPE rm_error = OMX_ErrorNone;
@@ -2484,7 +2490,11 @@ pHandle = pComponentPrivate_CC->pHandle;
 /* Previously in HandleDatabuffer form LCML */
 
         /* Copying time stamp information to output buffer */
-        pLcmlHdr->buffer->nTimeStamp = (OMX_TICKS)pComponentPrivate_CC->timestampBufIndex[pComponentPrivate_CC->OpBufindex];
+        pLcmlHdr->buffer->nTimeStamp = pComponentPrivate_CC->TimeStamp;
+        /* get duration in microsecs, with framesize of 1024 samples per frame */
+        frame_duration = ((pLcmlHdr->pOpParam->unNumFramesEncoded) * 1024 * 1000000) / pComponentPrivate_CC->ulSamplingRate;
+        /* Update time stamp information */
+        pComponentPrivate_CC->TimeStamp += frame_duration;
         pLcmlHdr->buffer->nTickCount = pComponentPrivate_CC->tickcountBufIndex[pComponentPrivate_CC->OpBufindex];
         pComponentPrivate_CC->OpBufindex++;
         pComponentPrivate_CC->OpBufindex %= pComponentPrivate_CC->pPortDef[OMX_DirOutput]->nBufferCountActual;
@@ -2620,7 +2630,7 @@ pHandle = pComponentPrivate_CC->pHandle;
 
         pthread_mutex_lock(&pComponentPrivate_CC->codecStop_mutex);
         if(pComponentPrivate_CC->codecStop_waitingsignal == 0){
-            pComponentPrivate_CC->codecStop_waitingsignal = 1;
+            pComponentPrivate_CC->codecStop_waitingsignal = 1;             
             pthread_cond_signal(&pComponentPrivate_CC->codecStop_threshold);
             OMX_PRINT2(pComponentPrivate_CC->dbg, "stop ack. received. stop waiting for sending disable command completed\n");
         }
@@ -3455,7 +3465,6 @@ OMX_ERRORTYPE AddStateTransition(AACENC_COMPONENT_PRIVATE* pComponentPrivate) {
     }
     /* Increment state change request reference count */
     pComponentPrivate->nPendingStateChangeRequests++;
-    LOGI("addstatetranstion: %ld @ %d", pComponentPrivate->nPendingStateChangeRequests, pComponentPrivate->curState);
 
     if(pthread_mutex_unlock(&pComponentPrivate->mutexStateChangeRequest)) {
        return OMX_ErrorUndefined;
@@ -3471,7 +3480,6 @@ OMX_ERRORTYPE RemoveStateTransition(AACENC_COMPONENT_PRIVATE* pComponentPrivate,
        return OMX_ErrorUndefined;
     }
     pComponentPrivate->nPendingStateChangeRequests--;
-    LOGI("removestatetranstion: %ld @ %d", pComponentPrivate->nPendingStateChangeRequests, pComponentPrivate->curState);
 
     /* If there are no more pending requests, signal the thread waiting on this*/
     if(!pComponentPrivate->nPendingStateChangeRequests && bEnableSignal) {

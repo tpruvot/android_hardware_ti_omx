@@ -121,14 +121,14 @@ void* OMX_JpegDec_Thread (void* pThreadData)
         sigaddset(&set, SIGALRM);
         nStatus = pselect (nFdmax+1, &rfds, NULL, NULL, NULL,&set);
 
+        if (pComponentPrivate->bExitCompThrd == 1) {
+            OMX_ERROR4(pComponentPrivate->dbg, "%d :: Comp Thrd Exiting here...\n",__LINE__);
+            break;
+        }
+
         if (-1 == nStatus) {
 	    OMX_TRACE5(pComponentPrivate->dbg, "Error in Select\n");
-            pComponentPrivate->cbInfo.EventHandler(pComponentPrivate->pHandle,
-                                                   pComponentPrivate->pHandle->pApplicationPrivate,
-                                                   OMX_EventError,
-                                                   OMX_ErrorInsufficientResources,
-                                                   OMX_TI_ErrorSevere,
-                                                   "Error from COmponent Thread in select");
+            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->nCurState);
 	     eError = OMX_ErrorInsufficientResources;
         }
         else {

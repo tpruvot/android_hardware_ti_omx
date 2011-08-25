@@ -667,6 +667,8 @@ typedef struct WBAMR_DEC_COMPONENT_PRIVATE
     
     PV_OMXComponentCapabilityFlagsType iPVCapabilityFlags;
 
+    OMX_BOOL errorSent;
+
     struct OMX_TI_Debug dbg;    
 
 } WBAMR_DEC_COMPONENT_PRIVATE;

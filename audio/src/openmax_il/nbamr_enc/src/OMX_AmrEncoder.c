@@ -250,8 +250,8 @@ OMX_ERRORTYPE OMX_ComponentInit (OMX_HANDLETYPE hComp)
     pComponentPrivate->iPVCapabilityFlags.iOMXComponentSupportsExternalOutputBufferAlloc = OMX_FALSE;
     pComponentPrivate->iPVCapabilityFlags.iOMXComponentSupportsExternalInputBufferAlloc = OMX_FALSE;
     pComponentPrivate->iPVCapabilityFlags.iOMXComponentSupportsMovableInputBuffers = OMX_FALSE;
-    pComponentPrivate->iPVCapabilityFlags.iOMXComponentSupportsPartialFrames = OMX_FALSE;
-    pComponentPrivate->iPVCapabilityFlags.iOMXComponentCanHandleIncompleteFrames = OMX_FALSE;
+    pComponentPrivate->iPVCapabilityFlags.iOMXComponentSupportsPartialFrames = OMX_TRUE;
+    pComponentPrivate->iPVCapabilityFlags.iOMXComponentCanHandleIncompleteFrames = OMX_TRUE;
 #endif
 
 #ifdef __PERF_INSTRUMENTATION__
@@ -1480,25 +1480,39 @@ static OMX_ERRORTYPE GetState (OMX_HANDLETYPE pComponent, OMX_STATETYPE* pState)
     /* Retrieve current state */
     if (pHandle && pHandle->pComponentPrivate) {
         /* Check for any pending state transition requests */
-        pthread_mutex_lock(&pComponentPrivate->mutexStateChangeRequest);
-        while (pComponentPrivate->nPendingStateChangeRequests != 0) {
+        if(pthread_mutex_lock(&pComponentPrivate->mutexStateChangeRequest)) {
+            return OMX_ErrorUndefined;
+        }
+        nPendingStateChangeRequests = pComponentPrivate->nPendingStateChangeRequests;
+        if(!nPendingStateChangeRequests) {
+           if(pthread_mutex_unlock(&pComponentPrivate->mutexStateChangeRequest)) {
+               return OMX_ErrorUndefined;
+           }
+
+           /* No pending state transitions */
+	   *pState = ((AMRENC_COMPONENT_PRIVATE*)pHandle->pComponentPrivate)->curState;
+            eError = OMX_ErrorNone;
+        }
+        else {
            /* Wait for component to complete state transition */
            clock_gettime(CLOCK_REALTIME, &abs_time);
            abs_time.tv_sec += mutex_timeout;
            abs_time.tv_nsec = 0;
-           ret = pthread_cond_timedwait(&(pComponentPrivate->StateChangeCondition),
-                    &(pComponentPrivate->mutexStateChangeRequest), &abs_time);
-           if (ret == ETIMEDOUT) {
-              OMX_ERROR4(pComponentPrivate->dbg, "GetState() timeout at state %d",
-                    pComponentPrivate->curState);
-              *pState = OMX_StateInvalid;
-              break;
+           ret = pthread_cond_timedwait(&(pComponentPrivate->StateChangeCondition), &(pComponentPrivate->mutexStateChangeRequest), &abs_time);
+           if (!ret) {
+              /* Component has completed state transitions*/
+              *pState = ((AMRENC_COMPONENT_PRIVATE*)pHandle->pComponentPrivate)->curState;
+              if(pthread_mutex_unlock(&pComponentPrivate->mutexStateChangeRequest)) {
+                 return OMX_ErrorUndefined;
+              }
+              eError = OMX_ErrorNone;
+           }
+           else if(ret == ETIMEDOUT) {
+              /* Unlock mutex in case of timeout */
+              pthread_mutex_unlock(&pComponentPrivate->mutexStateChangeRequest);
+              return OMX_ErrorTimeout;
            }
         }
-        if (!ret) {
-            *pState = pComponentPrivate->curState;
-        }
-        pthread_mutex_unlock(&pComponentPrivate->mutexStateChangeRequest);
      }
      else {
         eError = OMX_ErrorInvalidComponent;
@@ -2116,9 +2130,9 @@ static OMX_ERRORTYPE FreeBuffer(
             !pComponentPrivate->pOutputBufferList->numBuffers) &&
             pComponentPrivate->InIdle_goingtoloaded)
        {
+           pComponentPrivate->InIdle_goingtoloaded = 0;
 #ifndef UNDER_CE
            pthread_mutex_lock(&pComponentPrivate->InIdle_mutex);
-           pComponentPrivate->InIdle_goingtoloaded = 0;
            pthread_cond_signal(&pComponentPrivate->InIdle_threshold);
            pthread_mutex_unlock(&pComponentPrivate->InIdle_mutex);
 #else
@@ -2126,11 +2140,16 @@ static OMX_ERRORTYPE FreeBuffer(
 #endif
        }
 
-    pthread_mutex_unlock(&pComponentPrivate->ToLoaded_mutex);
-    if (pComponentPrivate->bDisableCommandPending &&
-        (pComponentPrivate->pInputBufferList->numBuffers + pComponentPrivate->pOutputBufferList->numBuffers == 0)) {
+       pthread_mutex_unlock(&pComponentPrivate->ToLoaded_mutex);
+
+       if ((pComponentPrivate->bLoadedWaitingFreeBuffers &&(!pComponentPrivate->pInputBufferList->numBuffers &&
+            !pComponentPrivate->pOutputBufferList->numBuffers))) {
+            OMX_PRCOMM1(pComponentPrivate->dbg, "reissuing loaded command\n");
+        SendCommand(pComponentPrivate->pHandle,OMX_CommandStateSet,OMX_StateLoaded,NULL);
+       }
+if (pComponentPrivate->bDisableCommandPending && (pComponentPrivate->pInputBufferList->numBuffers + pComponentPrivate->pOutputBufferList->numBuffers == 0)) {
             SendCommand (pComponentPrivate->pHandle,OMX_CommandPortDisable,pComponentPrivate->bDisableCommandParam,NULL);
-    }
+        }
     OMX_PRINT1(pComponentPrivate->dbg, "%d :: Exiting FreeBuffer\n", __LINE__);
     OMX_PRINT1(pComponentPrivate->dbg, "%d :: Returning = 0x%x\n",__LINE__,eError);
     return eError;

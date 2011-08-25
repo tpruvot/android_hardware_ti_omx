@@ -163,6 +163,11 @@ void* OMX_VIDENC_Thread (void* pThreadData)
         sigaddset(&set,SIGALRM);
         status = pselect(fdmax+1, &rfds, NULL, NULL, NULL,&set);
 
+        if (pComponentPrivate->bExitCompThrd == 1) {
+            OMX_ERROR4(pComponentPrivate->dbg, "%d :: Comp Thrd Exiting here...\n",__LINE__);
+            OMX_CONF_SET_ERROR_BAIL(eError, OMX_ErrorNone);
+        }
+
         if (0 == status)
         {
             OMX_TRACE2(pComponentPrivate->dbg, "pselect() = 0\n");
@@ -174,15 +179,9 @@ void* OMX_VIDENC_Thread (void* pThreadData)
         }
         else if (-1 == status)
         {
-            if (pComponentPrivate->eState != OMX_StateLoaded)
-            {
-                OMX_TRACE3(pComponentPrivate->dbg, "select() error.\n");
-                OMX_VIDENC_EVENT_HANDLER(pComponentPrivate, OMX_EventError, OMX_ErrorHardware, 0, NULL);
-            }
-            /*OMX_VIDENC_SET_ERROR_BAIL(eError, OMX_ErrorHardware, pComponentPrivate);*/
-            eError = OMX_ErrorHardware;
-            OMX_ERROR5(pComponentPrivate->dbg, "*Fatal Error : %x\n", eError);
-            OMX_VIDENC_HandleError(pComponentPrivate, eError);
+            OMX_TRACE3(pComponentPrivate->dbg, "select() error.\n");
+            pComponentPrivate->eState = OMX_StateInvalid;
+            OMX_VIDENC_SET_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate);
         }
         else
         {

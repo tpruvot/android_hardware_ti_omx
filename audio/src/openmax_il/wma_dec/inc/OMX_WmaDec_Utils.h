@@ -138,7 +138,7 @@ typedef struct OMXBufferStatus /*BUFFERSTATUS*/
  * @def    NUM_WMADEC_INPUT_BUFFERS   Default number of input buffers               
  */
 /* ======================================================================= */
-#define NUM_WMADEC_INPUT_BUFFERS 2
+#define NUM_WMADEC_INPUT_BUFFERS 8
 /* ======================================================================= */
 /**
  * @def    NUM_WMADEC_OUTPUT_BUFFERS   Default number of output buffers                                   
@@ -147,7 +147,7 @@ typedef struct OMXBufferStatus /*BUFFERSTATUS*/
 #ifdef UNDER_CE
 #define NUM_WMADEC_OUTPUT_BUFFERS 4
 #else
-#define NUM_WMADEC_OUTPUT_BUFFERS 4
+#define NUM_WMADEC_OUTPUT_BUFFERS 8
 #endif
 /* ======================================================================= */
 /**
@@ -528,7 +528,7 @@ typedef struct
 typedef struct {
     /* Number of frames in a buffer */
     unsigned long ulFrameCount;
-    bool ulIsLastBuffer;
+    OMX_U16 bLastBuffer;
 }WMADEC_UAlgOutBufParamStruct;
 /* =================================================================================== */
 /**
@@ -554,7 +554,6 @@ struct _BUFFERLIST{
     OMX_BUFFERHEADERTYPE *pBufHdr[MAX_NUM_OF_BUFS]; /* records buffer header send by client */ 
     OMX_U32 bufferOwner[MAX_NUM_OF_BUFS];
     OMX_U32 bBufferPending[MAX_NUM_OF_BUFS];
-    OMX_U8 EosFlagSent;
 };
 
 
@@ -833,8 +832,14 @@ typedef struct WMADEC_COMPONENT_PRIVATE
     pthread_cond_t codecFlush_threshold;
     OMX_U8 codecFlush_waitingsignal;
     
+    /* counts the number of unhandled FillThisBuffer() calls */
     OMX_U8 nUnhandledFillThisBuffers;
+    /* counts the number of handled FillThisBuffer() calls */
+    OMX_U8 nHandledFillThisBuffers;
+    /* counts the number of unhandled EmptyThisBuffer() calls */
     OMX_U8 nUnhandledEmptyThisBuffers;
+    /* counts the number of handled EmptyThisBuffer() calls */
+    OMX_U8 nHandledEmptyThisBuffers;
     OMX_BOOL bFlushOutputPortCommandPending;
     OMX_BOOL bFlushInputPortCommandPending;
     
@@ -870,12 +875,20 @@ typedef struct WMADEC_COMPONENT_PRIVATE
     OMX_AUDIO_PARAM_PCMMODETYPE *wma_op;
     	
     OMX_U8 first_buffer;	
-	
+
     RCA_HEADER *rcaheader;
 
-    struct OMX_TI_Debug dbg;        
+    OMX_BOOL errorSent;
+
+    struct OMX_TI_Debug dbg;
 
     OMX_BUFFERHEADERTYPE *lastout;
+    /** Flag to mark the first sent buffer**/
+    OMX_U8 first_buff;
+    /** First Time Stamp sent **/
+    OMX_TICKS first_TS;
+    /** Temporal time stamp **/
+    OMX_TICKS temp_TS;
 
 } WMADEC_COMPONENT_PRIVATE;
 /* ===========================================================  */

@@ -165,12 +165,7 @@ void* WBAMR_DEC_ComponentThread (void* pThreadData)
             OMX_PRINT2(pComponentPrivate->dbg,"Component Time Out !!!!!!!!!!!! \n");
         } else if (-1 == status) {
             OMX_ERROR4(pComponentPrivate->dbg, "Error in Select\n");
-            pComponentPrivate->cbInfo.EventHandler (pHandle,
-                                                    pHandle->pApplicationPrivate,
-                                                    OMX_EventError,
-                                                    OMX_ErrorInsufficientResources,
-                                                    OMX_TI_ErrorSevere,
-                                                    "Error from Component Thread in select");
+            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->curState);
             eError = OMX_ErrorInsufficientResources;
 
         } else if (FD_ISSET (pComponentPrivate->dataPipe[0], &rfds)) {

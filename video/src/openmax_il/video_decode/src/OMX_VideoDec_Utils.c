@@ -1163,9 +1163,8 @@ OMX_ERRORTYPE VIDDEC_Load_Defaults (VIDDEC_COMPONENT_PRIVATE* pComponentPrivate,
             pComponentPrivate->nMemUsage[VIDDDEC_Enum_MemLevel3]  = 0;
             pComponentPrivate->nMemUsage[VIDDDEC_Enum_MemLevel4]  = 0;
             pComponentPrivate->bVC1Fix                          = OMX_TRUE;
-            pComponentPrivate->eFirstBuffer.pFirstBufferSaved   = NULL;
             pComponentPrivate->eFirstBuffer.bSaveFirstBuffer    = OMX_FALSE;
-            pComponentPrivate->eFirstBuffer.nFilledLen          = 0;
+            pComponentPrivate->eFirstBuffer.pBufferHdr          = NULL;
             pComponentPrivate->bDynamicConfigurationInProgress  = OMX_FALSE;
             pComponentPrivate->nInternalConfigBufferFilledAVC = 0;
             pComponentPrivate->eMBErrorReport.bEnabled            = OMX_FALSE;
@@ -2261,6 +2260,20 @@ OMX_ERRORTYPE VIDDEC_HandleCommandFlush(VIDDEC_COMPONENT_PRIVATE *pComponentPriv
             if (nCountInputBFromDsp > 0) {
                 VIDDEC_PTHREAD_MUTEX_WAIT(pComponentPrivate->inputFlushCompletionMutex);
             }
+
+            /*OMAPS00227444: Just applicable for H264 use cases.
+            * If we have flushed and the frame count is less than MAX_PRIVATE_IN_BUFFERS
+            * is a sign that the IB with SPS and PPS info is not being processed in SN. The CSR scenario
+            * shows always frameCounter = 4 for error cases.
+            * Here we are forcing to add SPS and PPS info to the first IB after the flush if the current
+            * frame count is less than MAX_PRIVATE_IN_BUFFERS and the first header has been passed but not
+            * sure if processed in DSP. */
+            if(pComponentPrivate->pInPortDef->format.video.eCompressionFormat == OMX_VIDEO_CodingAVC &&
+                pComponentPrivate->bFirstHeader && pComponentPrivate->frameCounter <= MAX_PRIVATE_IN_BUFFERS){
+                LOGE("%d %s DSP flushed without processing SPS/PPS. saving first buffer\n", __LINE__, __func__);
+                pComponentPrivate->eFirstBuffer.bSaveFirstBuffer = OMX_TRUE;
+            }
+
             pComponentPrivate->bIsInputFlushPending = OMX_FALSE;
             VIDDEC_PTHREAD_MUTEX_UNLOCK(pComponentPrivate->inputFlushCompletionMutex);
             pComponentPrivate->cbInfo.EventHandler(pComponentPrivate->pHandle,
@@ -2737,9 +2750,11 @@ OMX_ERRORTYPE VIDDEC_HandleCommand (OMX_HANDLETYPE phandle, OMX_U32 nParam1)
             }
             else if (pComponentPrivate->eState == OMX_StateExecuting || pComponentPrivate->eState == OMX_StatePause) {
                 /*Set the bIsStopping bit*/
-                if (pComponentPrivate->bDynamicConfigurationInProgress == OMX_TRUE) {
-	            pComponentPrivate->bDynamicConfigurationInProgress = OMX_FALSE;
-                    OMX_PRSTATE1(pComponentPrivate->dbg, "We were doing DynamicConfiguration, canceling it. %d \n",pComponentPrivate->bDynamicConfigurationInProgress);
+                if (pComponentPrivate->bDynamicConfigurationInProgress == OMX_TRUE ||
+                    pComponentPrivate->eLCMLState != VidDec_LCML_State_Start) {
+                    pComponentPrivate->eLCMLState = VidDec_LCML_State_Start;
+	                pComponentPrivate->bDynamicConfigurationInProgress = OMX_FALSE;
+                    OMX_PRSTATE4(pComponentPrivate->dbg, "We were doing DynamicConfiguration, canceling it. %d \n",pComponentPrivate->bDynamicConfigurationInProgress);
                 }
                 pComponentPrivate->bIsStopping = 1;
                 OMX_PRSTATE1(pComponentPrivate->dbg, "bIsStopping 0x%lx\n",pComponentPrivate->bIsStopping);
@@ -2753,6 +2768,9 @@ OMX_ERRORTYPE VIDDEC_HandleCommand (OMX_HANDLETYPE phandle, OMX_U32 nParam1)
                     pComponentPrivate->bIsPaused = 0;
                     pComponentPrivate->iEndofInputSent = 0;
 /********************************************************************************************************************/
+
+            VIDDEC_HandleCommandFlush(pComponentPrivate, -1, OMX_FALSE);
+
            if (pComponentPrivate->bIsStopping == OMX_TRUE) {
                 pComponentPrivate->bIsPaused = OMX_FALSE;
                 if(pComponentPrivate->eLCMLState != VidDec_LCML_State_Unload &&
@@ -2772,7 +2790,6 @@ OMX_ERRORTYPE VIDDEC_HandleCommand (OMX_HANDLETYPE phandle, OMX_U32 nParam1)
                     VIDDEC_PTHREAD_MUTEX_WAIT(pComponentPrivate->sMutex);
                     VIDDEC_PTHREAD_MUTEX_UNLOCK(pComponentPrivate->sMutex);
                 }
-                VIDDEC_HandleCommandFlush(pComponentPrivate, -1, OMX_FALSE);
 
 #if 1
 #ifdef RESOURCE_MANAGER_ENABLED
@@ -3192,11 +3209,12 @@ OMX_ERRORTYPE VIDDEC_HandleCommand (OMX_HANDLETYPE phandle, OMX_U32 nParam1)
 #endif
                 OMX_VidDec_Return(pComponentPrivate);
                 pComponentPrivate->eIdleToLoad = OMX_StateLoaded;
-                if(pComponentPrivate->eFirstBuffer.pFirstBufferSaved){
-                    free(pComponentPrivate->eFirstBuffer.pFirstBufferSaved);
-                    pComponentPrivate->eFirstBuffer.pFirstBufferSaved = NULL;
-                    pComponentPrivate->eFirstBuffer.bSaveFirstBuffer = OMX_FALSE;
-                    pComponentPrivate->eFirstBuffer.nFilledLen = 0;
+
+                if(pComponentPrivate->eFirstBuffer.pBufferHdr != NULL){
+                    if(pComponentPrivate->eFirstBuffer.pBufferHdr->pBuffer != NULL){
+                        OMX_MEMFREE_STRUCT_DSPALIGN(pComponentPrivate->eFirstBuffer.pBufferHdr->pBuffer, OMX_U8);
+                    }
+                    OMX_FREE_VIDDEC(pComponentPrivate->eFirstBuffer.pBufferHdr);
                 }
 #ifdef RESOURCE_MANAGER_ENABLED
                 if(pComponentPrivate->eRMProxyState == VidDec_RMPROXY_State_Registered){
@@ -5268,6 +5286,16 @@ OMX_ERRORTYPE VIDDEC_HandleDataBuf_FromApp(VIDDEC_COMPONENT_PRIVATE *pComponentP
         eError = OMX_ErrorHardware;
         goto EXIT;
     }
+    if ((pComponentPrivate->eState == OMX_StateIdle) && (pComponentPrivate->eExecuteToIdle != OMX_StateExecuting)) {
+        if (pBuffHead != NULL) {
+            pBufferPrivate = (VIDDEC_BUFFER_PRIVATE* )pBuffHead->pInputPortPrivate;
+            pBufferPrivate->eBufferOwner = VIDDEC_BUFFER_WITH_CLIENT;
+            VIDDEC_EmptyBufferDone(pComponentPrivate, pBuffHead);
+            eError = OMX_ErrorNone;
+            goto EXIT;
+        }
+    }
+
     eError = DecrementCount (&(pComponentPrivate->nCountInputBFromApp), &(pComponentPrivate->mutexInputBFromApp));
     if (eError != OMX_ErrorNone) {
         return eError;
@@ -6390,8 +6418,18 @@ OMX_ERRORTYPE VIDDEC_HandleDataBuf_FromApp(VIDDEC_COMPONENT_PRIVATE *pComponentP
                     goto EXIT;
                 }
             }
-            else {
-                eError = OMX_ErrorHardware;
+            else if ((pComponentPrivate->eLCMLState ==  VidDec_LCML_State_Start ) &&
+                         (pComponentPrivate->eExecuteToIdle != OMX_StateExecuting)){
+                if (pBuffHead != NULL) {
+                    pBufferPrivate = (VIDDEC_BUFFER_PRIVATE* )pBuffHead->pInputPortPrivate;
+                    pBufferPrivate->eBufferOwner = VIDDEC_BUFFER_WITH_CLIENT;
+                    VIDDEC_EmptyBufferDone(pComponentPrivate, pBuffHead);
+                    eError = OMX_ErrorNone;
+                    goto EXIT;
+                 }
+            }
+            else{
+                eError = OMX_ErrorInvalidState;
                 goto EXIT;
             }
         }
@@ -8382,10 +8420,39 @@ OMX_ERRORTYPE VIDDEC_SaveBuffer(VIDDEC_COMPONENT_PRIVATE* pComponentPrivate,
     OMX_PRINT1(pComponentPrivate->dbg, "IN\n");
     pComponentPrivate->eFirstBuffer.bSaveFirstBuffer = OMX_TRUE;
 
-    OMX_MALLOC_STRUCT_SIZED(pComponentPrivate->eFirstBuffer.pFirstBufferSaved, OMX_U8, pBuffHead->nFilledLen, NULL);
-    memcpy(pComponentPrivate->eFirstBuffer.pFirstBufferSaved, pBuffHead->pBuffer, pBuffHead->nFilledLen);
+    if(pComponentPrivate->eFirstBuffer.pBufferHdr != NULL){
+        if(pComponentPrivate->eFirstBuffer.pBufferHdr->pBuffer != NULL){
+            OMX_MEMFREE_STRUCT_DSPALIGN(pComponentPrivate->eFirstBuffer.pBufferHdr->pBuffer, OMX_U8);
+        }
+        OMX_FREE_VIDDEC(pComponentPrivate->eFirstBuffer.pBufferHdr);
+    }
+    OMX_MALLOC_STRUCT(pComponentPrivate->eFirstBuffer.pBufferHdr, OMX_BUFFERHEADERTYPE, NULL);
+    memset(pComponentPrivate->eFirstBuffer.pBufferHdr, 0, sizeof(OMX_BUFFERHEADERTYPE));
+    OMX_CONF_INIT_STRUCT(pComponentPrivate->eFirstBuffer.pBufferHdr, OMX_BUFFERHEADERTYPE, pComponentPrivate->dbg);
+    pComponentPrivate->eFirstBuffer.pBufferHdr->nOffset = 0;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->pAppPrivate = NULL;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->pPlatformPrivate = NULL;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->pInputPortPrivate = NULL;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->pOutputPortPrivate = NULL;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->nFlags = VIDDEC_CLEARFLAGS;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->nTickCount = 0;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->nTimeStamp = 0;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->pMarkData = NULL;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->nInputPortIndex = VIDDEC_INPUT_PORT;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->nOutputPortIndex = VIDDEC_NOPORT;
 
-    pComponentPrivate->eFirstBuffer.nFilledLen = pBuffHead->nFilledLen;
+    /* Save buffer */
+
+    OMX_MALLOC_SIZE_DSPALIGN(pComponentPrivate->eFirstBuffer.pBufferHdr->pBuffer, pBuffHead->nFilledLen, OMX_U8);
+
+    if (pComponentPrivate->eFirstBuffer.pBufferHdr->pBuffer){
+       memcpy(pComponentPrivate->eFirstBuffer.pBufferHdr->pBuffer, pBuffHead->pBuffer, pBuffHead->nFilledLen);
+    }else {
+       eError = OMX_ErrorInsufficientResources;
+       goto EXIT;
+    }
+    pComponentPrivate->eFirstBuffer.pBufferHdr->nAllocLen = pBuffHead->nFilledLen;
+    pComponentPrivate->eFirstBuffer.pBufferHdr->nFilledLen = pBuffHead->nFilledLen;
 
 EXIT:
     OMX_PRINT1(pComponentPrivate->dbg, "OUT\n");
@@ -8418,37 +8485,27 @@ OMX_ERRORTYPE VIDDEC_CopyBuffer(VIDDEC_COMPONENT_PRIVATE* pComponentPrivate,
         eError = OMX_ErrorUndefined;
         goto EXIT;
     }
-    OMX_PRINT1(pComponentPrivate->dbg, "pBuffer=%p\n", pBuffHead->pBuffer);
+    OMX_PRINT1(pComponentPrivate->dbg, "pBufferHeader=%p pBuffer=%p\n", pBuffHead, pBuffHead->pBuffer);
     OMX_PTR pTemp = NULL;
     pComponentPrivate->eFirstBuffer.bSaveFirstBuffer = OMX_FALSE;
 
-    /* only if NAL-bitstream format in frame mode */
-    if (
-        ((pComponentPrivate->ProcessMode == 0 && pComponentPrivate->H264BitStreamFormat > 0)
-     || (pBuffHead->nFilledLen > pComponentPrivate->eFirstBuffer.nFilledLen))
-     && (pBuffHead->nAllocLen >= pComponentPrivate->eFirstBuffer.nFilledLen + pBuffHead->nFilledLen)
-       ) {
+    if (pBuffHead->nAllocLen >= pComponentPrivate->eFirstBuffer.pBufferHdr->nFilledLen + pBuffHead->nFilledLen) {
+
         OMX_MALLOC_STRUCT_SIZED(pTemp, OMX_U8, pBuffHead->nFilledLen, NULL);
         memcpy(pTemp, pBuffHead->pBuffer, pBuffHead->nFilledLen); /*copy somewere actual buffer*/
-        memcpy(pBuffHead->pBuffer, pComponentPrivate->eFirstBuffer.pFirstBufferSaved, pComponentPrivate->eFirstBuffer.nFilledLen); /*copy first buffer to the beganing of pBuffer.*/
-        memcpy((OMX_U8 *)pBuffHead->pBuffer+pComponentPrivate->eFirstBuffer.nFilledLen, pTemp, pBuffHead->nFilledLen); /* copy back actual buffer after first buffer*/
-        pBuffHead->nFilledLen += pComponentPrivate->eFirstBuffer.nFilledLen; /*Add first buffer size*/
+        memcpy(pBuffHead->pBuffer,
+               pComponentPrivate->eFirstBuffer.pBufferHdr->pBuffer,
+               pComponentPrivate->eFirstBuffer.pBufferHdr->nFilledLen); /*copy first buffer to the beginning of pBuffer.*/
+        memcpy((OMX_U8 *)pBuffHead->pBuffer+pComponentPrivate->eFirstBuffer.pBufferHdr->nFilledLen,
+               pTemp,
+               pBuffHead->nFilledLen); /* copy back actual buffer after first buffer*/
+        pBuffHead->nFilledLen += pComponentPrivate->eFirstBuffer.pBufferHdr->nFilledLen; /*Add first buffer size*/
 
-        free(pTemp);
-        free(pComponentPrivate->eFirstBuffer.pFirstBufferSaved);
-        pComponentPrivate->eFirstBuffer.pFirstBufferSaved = NULL;
+        OMX_FREE_VIDDEC(pTemp);
     }
-        /*The first buffer has more information than the second, so the first buffer will be send to codec*/
-        /*We are loosing the second fame. TODO: Fix this*/
-        else if (pBuffHead->nAllocLen >= pComponentPrivate->eFirstBuffer.nFilledLen){
-            /*copy first buffer data to the actual buffer*/
-            memcpy(pBuffHead->pBuffer, pComponentPrivate->eFirstBuffer.pFirstBufferSaved, pComponentPrivate->eFirstBuffer.nFilledLen); /*copy first buffer*/
-            pBuffHead->nFilledLen = pComponentPrivate->eFirstBuffer.nFilledLen; /*Update buffer size*/
-            free(pComponentPrivate->eFirstBuffer.pFirstBufferSaved);
-            pComponentPrivate->eFirstBuffer.pFirstBufferSaved = NULL;
-        } else {
-            LOGE("Not enough memory in the buffer to concatenate the 2 frames, loosing first frame\n");
-        }
+    else {
+        OMX_ERROR4(pComponentPrivate->dbg, "Not enough memory in the buffer to concatenate the 2 frames, loosing first frame \n");
+    }
 EXIT:
     OMX_PRINT1(pComponentPrivate->dbg, "OUT\n");
     return eError;

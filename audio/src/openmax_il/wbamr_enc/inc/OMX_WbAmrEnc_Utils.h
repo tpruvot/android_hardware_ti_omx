@@ -764,6 +764,8 @@ typedef struct WBAMRENC_COMPONENT_PRIVATE {
     /* Pointer to OpenCore capabilities structure */
     PV_OMXComponentCapabilityFlagsType iPVCapabilityFlags;
 
+    OMX_BOOL errorSent;
+
     struct OMX_TI_Debug dbg;
 
     /* Reference count for pending state change requests */

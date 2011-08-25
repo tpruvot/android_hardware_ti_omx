@@ -927,6 +927,7 @@ typedef struct AMRENC_COMPONENT_PRIVATE
     OMX_U32 teeMode;
     PV_OMXComponentCapabilityFlagsType iPVCapabilityFlags;
 
+    OMX_BOOL errorSent;
     struct OMX_TI_Debug dbg;
 
     /* Reference count for pending state change requests */

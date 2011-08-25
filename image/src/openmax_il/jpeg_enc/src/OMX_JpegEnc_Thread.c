@@ -141,16 +141,18 @@ void* OMX_JpegEnc_Thread (void* pThreadData)
 	 sigaddset(&set,SIGALRM);
         status = pselect (fdmax+1, &rfds, NULL, NULL, NULL,&set);
 
+        if (pComponentPrivate->bExitCompThrd == 1) {
+            OMX_ERROR4(pComponentPrivate->dbg, "%d :: Comp Thrd Exiting here...\n",__LINE__);
+            break;
+        }
+
         if ( 0 == status ) {
             OMX_TRACE2(pComponentPrivate->dbg, "Component Thread Time Out!!!\n");
         } else if ( -1 == status ) {
             OMX_TRACE4(pComponentPrivate->dbg, "Error in Select\n");
 
-            pComponentPrivate->cbInfo.EventHandler (pComponentPrivate->pHandle, pComponentPrivate->pHandle->pApplicationPrivate,
-                                                    OMX_EventError, OMX_ErrorInsufficientResources, OMX_TI_ErrorSevere,
-                                                    "Error from COmponent Thread in select");
+            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->nCurState);
 	     eError = OMX_ErrorInsufficientResources;
-            break;
         } else {
             if ( (FD_ISSET (pComponentPrivate->filled_inpBuf_Q[0], &rfds))
                  && (pComponentPrivate->nCurState != OMX_StatePause) ) {

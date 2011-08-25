@@ -777,6 +777,9 @@ typedef struct MP3DEC_COMPONENT_PRIVATE
 
     StreamData pStreamData;
 
+    OMX_BOOL stopAckError;
+
+    OMX_BOOL errorSent;
     struct OMX_TI_Debug dbg;
 
 } MP3DEC_COMPONENT_PRIVATE;
@@ -1085,7 +1088,7 @@ OMX_U32 MP3DEC_GetBits(OMX_U32* nPosition, OMX_U8 nBits, OMX_U8* pBuffer, OMX_BO
 
  */
 /*=======================================================================*/
-void SignalIfAllBuffersAreReturned(MP3DEC_COMPONENT_PRIVATE *pComponentPrivate);
+void SignalIfAllBuffersAreReturned(MP3DEC_COMPONENT_PRIVATE *pComponentPrivate, OMX_U32* count);
 
 /*  =========================================================================*/
 /*  func    MP3DEC_HandleUSNError
