@@ -77,12 +77,26 @@
 
 #define DSP_ERROR_EXIT(err, msg, label)                \
     if (DSP_FAILED (err)) {                        \
-        printf("\n****************LCML ERROR : DSP ************************\n");\
-        printf("Error: %s : Err Num = %lx", msg, err);  \
+        LOGE("\n****************LCML ERROR : DSPs ***********************\n");\
+        LOGE("Error: %s : Err Num = %lx", msg, err);  \
         eError = OMX_ErrorHardware;                \
-        printf("\n****************LCML ERROR : DSP ************************\n");\
+        LOGE("\n****************LCML ERROR : DSP ************************\n");\
         goto label;                               \
-    }                                              /**/
+    }
+
+#if 0 //#ifndef RES_CLEANUP_DISABLE
+#include <DSPManager.h>
+#undef DSP_ERROR_EXIT
+#define DSP_ERROR_EXIT(err, msg, label) \
+    if (DSP_FAILED (err)) {                                                   \
+        LOGE("\n****************LCML ERROR : DSPr ***********************\n");\
+        eError = OMX_ErrorHardware;                                           \
+        DSP_STATUS eStatus = DSPManager_Force_Recovery();                     \
+        LOGE("Error: %s : Err Num %lx status:%lx", msg, err, eStatus);        \
+        LOGE("\n****************LCML ERROR : DSP ************************\n");\
+        goto label;                                                           \
+    }
+#endif
 
 /* ======================================================================= */
 /**
@@ -298,6 +312,7 @@ typedef struct LCML_DSP_INTERFACE
     OMX_BOOL ReUseMap;
     pthread_mutex_t m_isStopped_mutex;
 
+    OMX_BOOL vid_play_no_invalidate_flag;
 }LCML_DSP_INTERFACE;
 
 #endif /* __MMDSPCODEC_H__ */
