@@ -18,6 +18,13 @@ PERF_INSTRUMENTATION := 0
 PERF_CUSTOMIZABLE := 1
 PERF_READER := 1
 
+BUILD_JPEG_DECODER ?= 1
+BUILD_JPEG_ENCODER ?= 1
+
+ifeq ($(OMX_DEBUG),1)
+BUILD_JPEG_DEC_TEST ?= 1
+endif
+
 TI_OMX_CFLAGS := -Wall -fpic -pipe -finline-functions -DSTATIC_TABLE -O0
 
 # required to have DSP_NODEATTRIN.uProfileID in LCML_DspCodec.c
