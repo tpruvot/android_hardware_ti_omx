@@ -50,6 +50,7 @@
     #include <errno.h>
     #include <fcntl.h>
     #include <signal.h>
+    #include <sys/prctl.h>
 #endif
 
 #include <dbapi.h>
@@ -84,6 +85,8 @@ void* OMX_JpegDec_Thread (void* pThreadData)
     OMX_U32 error = 0;
     sigset_t set;
 
+    prctl(PR_SET_NAME, (unsigned long) "OMX-JPGDEC", 0, 0, 0);
+
 #ifdef __PERF_INSTRUMENTATION__
     pComponentPrivate->pPERFcomp = PERF_Create(PERF_FOURS("JPDT"),
 					    PERF_ModuleComponent | PERF_ModuleImageDecode);
@@ -115,41 +118,42 @@ void* OMX_JpegDec_Thread (void* pThreadData)
 
         tv.tv_sec = 1;
 
-        tv.tv_nsec = 0;
+        tv.tv_nsec = 0;	
 
         sigemptyset(&set);
         sigaddset(&set, SIGALRM);
         nStatus = pselect (nFdmax+1, &rfds, NULL, NULL, NULL,&set);
 
-        if (pComponentPrivate->bExitCompThrd == 1) {
-            OMX_ERROR4(pComponentPrivate->dbg, "%d :: Comp Thrd Exiting here...\n",__LINE__);
-            break;
-        }
-
         if (-1 == nStatus) {
-            OMX_TRACE5(pComponentPrivate->dbg, "Error in Select\n");
-            OMX_HANDLE_ERROR(eError, OMX_ErrorInvalidState, pComponentPrivate, pComponentPrivate->nCurState);
-            eError = OMX_ErrorInsufficientResources;
+	    OMX_TRACE5(pComponentPrivate->dbg, "Error in Select\n");
+            pComponentPrivate->cbInfo.EventHandler(pComponentPrivate->pHandle,
+                                                   pComponentPrivate->pHandle->pApplicationPrivate,
+                                                   OMX_EventError,
+                                                   OMX_ErrorInsufficientResources,
+                                                   OMX_TI_ErrorSevere,
+                                                   "Error from COmponent Thread in select");
+	     eError = OMX_ErrorInsufficientResources;
         }
         else {
             if ((FD_ISSET(pComponentPrivate->nCmdPipe[0], &rfds)) ||
                 (FD_ISSET(pComponentPrivate->nCmdDataPipe[0], &rfds))) {
                 /* Do not accept any command when the component is stopping */
-                OMX_PRCOMM2(pComponentPrivate->dbg, "CMD pipe is set in Component Thread\n");
+		OMX_PRCOMM2(pComponentPrivate->dbg, "CMD pipe is set in Component Thread\n");
 
                 read (pComponentPrivate->nCmdPipe[0], &eCmd, sizeof (eCmd));   /*Manage error from any read and write*/
-                OMX_PRCOMM1(pComponentPrivate->dbg, "read ecmd %d\n", eCmd);
+                OMX_PRCOMM1(pComponentPrivate->dbg, "read ecmd %d\n", eCmd); 
                 read (pComponentPrivate->nCmdDataPipe[0], &nParam1, sizeof (nParam1));
-                OMX_PRCOMM1(pComponentPrivate->dbg, "read nParam1 %lu\n", nParam1);
+                OMX_PRCOMM1(pComponentPrivate->dbg, "read nParam1 %lu\n", nParam1); 
 
 #ifdef __PERF_INSTRUMENTATION__
                 PERF_ReceivedCommand(pComponentPrivate->pPERFcomp,
                                      eCmd, nParam1, PERF_ModuleLLMM);
+
 #endif
 
                 if (eCmd == OMX_CommandStateSet) {
-                    if ((int)nParam1 != -1) {
-                        OMX_PRINT2(pComponentPrivate->dbg, "calling handlecommand  from JPEGDEC (%lu)\n", nParam1);
+		    if ((int)nParam1 != -1) {
+			    OMX_PRINT2(pComponentPrivate->dbg, "calling handlecommand  from JPEGDEC (%lu)\n", nParam1);
                         if(nParam1 == OMX_StateInvalid){
                             pComponentPrivate->nToState = OMX_StateInvalid;
                         }
@@ -168,7 +172,7 @@ void* OMX_JpegDec_Thread (void* pThreadData)
                         break;
                 }
                 else if (eCmd == OMX_CommandPortDisable) {
-                    OMX_PRINT2(pComponentPrivate->dbg, "PORT DISABLE\n");
+		    OMX_PRINT2(pComponentPrivate->dbg, "PORT DISABLE\n");
                     error = DisablePortJpegDec(pComponentPrivate, nParam1);
                     if(error != OMX_ErrorNone){
                         pComponentPrivate->cbInfo.EventHandler(pComponentPrivate->pHandle,
@@ -180,7 +184,7 @@ void* OMX_JpegDec_Thread (void* pThreadData)
                     }
                 }
                 else if (eCmd == OMX_CommandPortEnable) {
-                    OMX_PRINT2(pComponentPrivate->dbg, "PORT Enable\n");
+		    OMX_PRINT2(pComponentPrivate->dbg, "PORT Enable\n");
                     error = EnablePortJpegDec(pComponentPrivate, nParam1);
                     if(error != OMX_ErrorNone){
                         pComponentPrivate->cbInfo.EventHandler(pComponentPrivate->pHandle,
@@ -192,11 +196,11 @@ void* OMX_JpegDec_Thread (void* pThreadData)
                     }
                 }
                 else if (eCmd == OMX_CustomCommandStopThread) {
-                    OMX_PRINT2(pComponentPrivate->dbg, "cmd nStop\n");
+		    OMX_PRINT2(pComponentPrivate->dbg, "cmd nStop\n");
                     goto EXIT;
                 }
                 else if (eCmd == OMX_CommandMarkBuffer) {
-                    OMX_PRBUFFER2(pComponentPrivate->dbg, "Command OMX_CommandMarkBuffer received \n");
+		    OMX_PRBUFFER2(pComponentPrivate->dbg, "Command OMX_CommandMarkBuffer received \n");
                     if (!pComponentPrivate->pMarkBuf) {
 			OMX_PRBUFFER2(pComponentPrivate->dbg, "Command OMX_CommandMarkBuffer received \n");
                         /* TODO Need to handle multiple marks */
@@ -219,7 +223,8 @@ void* OMX_JpegDec_Thread (void* pThreadData)
             }
 
             if ((FD_ISSET(pComponentPrivate->nFilled_inpBuf_Q[0], &rfds)) &&
-                (pComponentPrivate->nCurState != OMX_StatePause)) {
+                (pComponentPrivate->nCurState != OMX_StatePause) &&
+                (pComponentPrivate->nCurState != OMX_StateInvalid)) {
 
                 eError = HandleDataBuf_FromAppJpegDec (pComponentPrivate);
                 if (eError != OMX_ErrorNone) {
@@ -233,7 +238,8 @@ void* OMX_JpegDec_Thread (void* pThreadData)
                 }
             }
 
-            if (FD_ISSET (pComponentPrivate->nFree_outBuf_Q[0], &rfds)) {
+            if (FD_ISSET (pComponentPrivate->nFree_outBuf_Q[0], &rfds) &&
+                (pComponentPrivate->nCurState != OMX_StateInvalid)) {
 
 	        OMX_PRBUFFER2(pComponentPrivate->dbg, "nFree_outBuf_Q has some buffers in Component Thread\n");
                 eError = HandleFreeOutputBufferFromAppJpegDec(pComponentPrivate);
