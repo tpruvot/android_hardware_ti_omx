@@ -9,6 +9,7 @@ LOCAL_SRC_FILES:= \
 	src/OMX_JpegEnc_Utils.c \
 	src/OMX_JpegEncoder.c \
 
+TOP ?= $(ANDROID_BUILD_TOP)
 TI_OMX_IMAGE ?= $(TOP)/hardware/ti/omap3/omx/image/src/openmax_il
 
 TI_OMX_COMP_C_INCLUDES ?= \

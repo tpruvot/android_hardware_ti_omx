@@ -5,6 +5,7 @@ TI_OMX_TOP := $(LOCAL_PATH)
 
 include $(CLEAR_VARS)
 
+TOP ?= $(ANDROID_BUILD_TOP)
 TI_BRIDGE_TOP := $(TOP)/hardware/ti/omap3/dspbridge
 
 # Recent versions contains api folder
@@ -95,6 +96,15 @@ endif
 ifeq ($(PERF_READER),1)
 #TODO: Implement automatic building
 #include $(TI_OMX_SYSTEM)/perf/reader/Android.mk
+endif
+
+#ittiam components (test)
+ifeq ($(ITTIAM_AUDIO),1)
+TI_OMX_CFLAGS += -DBUILD_WITH_ITTIAM_AUDIO
+endif
+
+ifeq ($(ITTIAM_VIDEO),1)
+TI_OMX_CFLAGS += -DBUILD_WITH_ITTIAM_DIVX
 endif
 
 #call to common omx & system components

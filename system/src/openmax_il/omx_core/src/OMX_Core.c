@@ -60,6 +60,10 @@ char *tComponentName[MAXCOMP][3] = {
     {"OMX.TI.Video.Decoder", "video_decoder.avc"},
     {"OMX.TI.720P.Decoder", "video_decoder.avc"},
     {"OMX.TI.720P.Decoder", "video_decoder.mpeg4"},
+#ifdef BUILD_WITH_ITTIAM_DIVX
+    {"OMX.ITTIAM.DivX720P.Decoder", "video_decoder.divx"},
+    {"OMX.ITTIAM.DivX3.Decoder", "video_decoder.divx3"},
+#endif
     //{"OMX.TI.Video.Decoder", "video_decoder.mpeg2"},
     {"OMX.TI.Video.encoder", "video_encoder.mpeg4"},
     {"OMX.TI.720P.Encoder", "video_encoder.mpeg4"},
@@ -94,6 +98,11 @@ char *tComponentName[MAXCOMP][3] = {
     {"OMX.TI.AMR.decode", "audio_decoder.amrnb"},
     {"OMX.TI.AMR.encode", "audio_encoder.amrnb"},
     {"OMX.TI.WBAMR.encode", "audio_encoder.amrwb"},
+#endif
+#ifdef BUILD_WITH_ITTIAM_AUDIO
+    {"OMX.ITTIAM.AAC.decode", "audio_decoder.aac"},
+    {"OMX.ITTIAM.AAC.encode", "audio_encoder.aac"},
+    {"OMX.ITTIAM.WMA.decode", "audio_decoder.wma"},
 #endif
 /*  {"OMX.TI.PCM.encode", NULL},
     {"OMX.TI.PCM.decode", NULL},     
