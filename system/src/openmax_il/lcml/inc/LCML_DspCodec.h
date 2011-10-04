@@ -84,7 +84,7 @@
         goto label;                               \
     }
 
-#if 0 //#ifndef RES_CLEANUP_DISABLE
+#ifdef MOTO_FORCE_RECOVERY
 #include <DSPManager.h>
 #undef DSP_ERROR_EXIT
 #define DSP_ERROR_EXIT(err, msg, label) \
